@@ -69,6 +69,66 @@ using (var scope = app.Services.CreateScope())
     }
 
     await db.SaveChangesAsync();
+
+    var locationIds = await db.Locations
+        .Where(location => location.IsActive)
+        .OrderBy(location => location.Name)
+        .Select(location => location.Id)
+        .Take(4)
+        .ToListAsync();
+
+    if (!await db.Employees.AnyAsync() && locationIds.Count >= 4)
+    {
+        db.Employees.AddRange(
+            new Employee
+            {
+                FirstName = "Ivan",
+                LastName = "Horvat",
+                Email = "ivan.horvat@ekvarovi.local",
+                Phone = "091 111 2233",
+                IsActive = true,
+                LocationId = locationIds[0]
+            },
+            new Employee
+            {
+                FirstName = "Marija",
+                LastName = "Kovač",
+                Email = "marija.kovac@ekvarovi.local",
+                Phone = "098 222 3344",
+                IsActive = true,
+                LocationId = locationIds[1]
+            },
+            new Employee
+            {
+                FirstName = "Petar",
+                LastName = "Marić",
+                Email = "petar.maric@ekvarovi.local",
+                Phone = "095 333 4455",
+                IsActive = true,
+                LocationId = locationIds[2]
+            },
+            new Employee
+            {
+                FirstName = "Ana",
+                LastName = "Jurić",
+                Email = "ana.juric@ekvarovi.local",
+                Phone = "092 444 5566",
+                IsActive = true,
+                LocationId = locationIds[3]
+            },
+            new Employee
+            {
+                FirstName = "Marko",
+                LastName = "Radić",
+                Email = "marko.radic@ekvarovi.local",
+                Phone = "099 555 6677",
+                IsActive = false,
+                LocationId = locationIds[0]
+            }
+        );
+    }
+
+    await db.SaveChangesAsync();
 }
 
 // Configure the HTTP request pipeline.
