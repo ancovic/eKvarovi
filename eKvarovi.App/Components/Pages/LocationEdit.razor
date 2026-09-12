@@ -1,0 +1,166 @@
+﻿@page "/locations/edit/{Id:int}"
+@rendermode InteractiveServer
+
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    Uredi lokaciju
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <EditForm Model="model"
+              OnValidSubmit="SaveLocation"
+              FormName="location-edit">
+
+        <MudPaper Class="pa-4">
+
+            <MudTextField Label="Naziv"
+                          @bind-Value="model.Name"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudSelect T="int"
+                       Label="Vrsta lokacije"
+                       @bind-Value="model.LocationTypeId"
+                       Required="true"
+                       Class="mb-3">
+
+                @foreach (var type in locationTypes)
+                {
+                    <MudSelectItem T="int" Value="@type.Id">
+                        @type.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudTextField Label="Adresa"
+                          @bind-Value="model.Address"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudTextField Label="Grad"
+                          @bind-Value="model.City"
+                          Class="mb-3" />
+
+            <MudCheckBox T="bool"
+                         Label="Aktivna lokacija"
+                         @bind-Value="model.IsActive"
+                         Class="mb-3" />
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary">
+                Spremi
+            </MudButton>
+
+            <MudButton Href="/locations"
+                       Variant="Variant.Text"
+                       Class="ml-2">
+                Odustani
+            </MudButton>
+
+        </MudPaper>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private SaveLocationDto model = new();
+
+    private List<LookupDto> locationTypes = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            locationTypes =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/locationtypes")
+                ?? new();
+
+            var location =
+                await Http.GetFromJsonAsync<LocationDto>(
+                    $"api/locations/{Id}");
+
+            if (location is null)
+            {
+                errorMessage = "Lokacija nije pronađena.";
+                return;
+            }
+
+            model = new SaveLocationDto
+            {
+                Name = location.Name,
+                Address = location.Address,
+                City = location.City,
+                IsActive = location.IsActive,
+                LocationTypeId = location.LocationTypeId
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Greška kod učitavanja lokacije: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveLocation()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = "Naziv lokacije je obavezan.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Address))
+        {
+            errorMessage = "Adresa lokacije je obavezna.";
+            return;
+        }
+
+        if (model.LocationTypeId == 0)
+        {
+            errorMessage = "Odaberi vrstu lokacije.";
+            return;
+        }
+
+        var response =
+            await Http.PutAsJsonAsync(
+                $"api/locations/{Id}",
+                model);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            errorMessage = "Promjene nisu spremljene.";
+            return;
+        }
+
+        Navigation.NavigateTo("/locations");
+    }
+}

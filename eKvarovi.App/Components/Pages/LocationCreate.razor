@@ -1,0 +1,150 @@
+﻿@page "/locations/create"
+@rendermode InteractiveServer
+
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    Nova lokacija
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <EditForm Model="model"
+              OnValidSubmit="SaveLocation"
+              FormName="location-create">
+
+        <MudPaper Class="pa-4">
+
+            <MudTextField Label="Naziv"
+                          @bind-Value="model.Name"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudSelect T="int"
+                       Label="Vrsta lokacije"
+                       @bind-Value="model.LocationTypeId"
+                       Required="true"
+                       Class="mb-3">
+
+                @foreach (var type in locationTypes)
+                {
+                    <MudSelectItem T="int" Value="@type.Id">
+                        @type.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudTextField Label="Adresa"
+                          @bind-Value="model.Address"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudTextField Label="Grad"
+                          @bind-Value="model.City"
+                          Class="mb-3" />
+
+            <MudCheckBox T="bool"
+                         Label="Aktivna lokacija"
+                         @bind-Value="model.IsActive"
+                         Class="mb-3" />
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary">
+                Spremi
+            </MudButton>
+
+            <MudButton Href="/locations"
+                       Variant="Variant.Text"
+                       Class="ml-2">
+                Odustani
+            </MudButton>
+
+        </MudPaper>
+    </EditForm>
+}
+
+@code {
+    private SaveLocationDto model = new()
+    {
+        IsActive = true
+    };
+
+    private List<LookupDto> locationTypes = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            locationTypes =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/locationtypes")
+                ?? new();
+
+            model.LocationTypeId =
+                locationTypes.FirstOrDefault()?.Id ?? 0;
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Greška kod učitavanja forme: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveLocation()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = "Naziv lokacije je obavezan.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Address))
+        {
+            errorMessage = "Adresa lokacije je obavezna.";
+            return;
+        }
+
+        if (model.LocationTypeId == 0)
+        {
+            errorMessage = "Odaberi vrstu lokacije.";
+            return;
+        }
+
+        var response =
+            await Http.PostAsJsonAsync(
+                "api/locations",
+                model);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            errorMessage = "Lokacija nije spremljena.";
+            return;
+        }
+
+        Navigation.NavigateTo("/locations");
+    }
+}

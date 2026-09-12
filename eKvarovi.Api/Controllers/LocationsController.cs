@@ -18,10 +18,20 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<LocationDto>>> GetLocations()
+    public async Task<ActionResult<List<LocationDto>>> GetLocations(
+    [FromQuery] int? locationTypeId)
     {
-        var locations = await _context.Locations
+        var query = _context.Locations
             .Include(location => location.LocationType)
+            .AsQueryable();
+
+        if (locationTypeId.HasValue)
+        {
+            query = query.Where(location =>
+                location.LocationTypeId == locationTypeId.Value);
+        }
+
+        var locations = await query
             .OrderBy(location => location.Name)
             .ToListAsync();
 
