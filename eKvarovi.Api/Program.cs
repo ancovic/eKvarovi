@@ -1,6 +1,12 @@
 using eKvarovi.Api.Data;
+using eKvarovi.Api.Security;
 using eKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +18,112 @@ builder.Services.AddDbContext<EKvaroviDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition(
+        "Bearer",
+        new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Unesi JWT token."
+        });
+
+    options.AddSecurityRequirement(
+        document =>
+            new OpenApiSecurityRequirement
+            {
+                [
+                    new OpenApiSecuritySchemeReference(
+                        "Bearer",
+                        document)
+                ] = []
+            });
+});
+
+var jwtSection =
+    builder.Configuration.GetSection(
+        JwtOptions.SectionName);
+
+var jwtOptions =
+    jwtSection.Get<JwtOptions>()
+    ?? throw new InvalidOperationException(
+        "Nedostaje Jwt konfiguracija.");
+
+if (jwtOptions.SigningKey.Length < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:SigningKey mora imati najmanje 32 znaka.");
+}
+
+builder.Services.Configure<JwtOptions>(
+    jwtSection);
+
+builder.Services.AddScoped<JwtTokenService>();
+
+builder.Services
+    .AddAuthentication(
+        JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer =
+                    jwtOptions.Issuer,
+
+                ValidateAudience = true,
+                ValidAudience =
+                    jwtOptions.Audience,
+
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey =
+                    new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(
+                            jwtOptions.SigningKey)),
+
+                ValidateLifetime = true,
+
+                ClockSkew =
+                    TimeSpan.FromSeconds(30)
+            };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy =
+        new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+
+    options.AddPolicy(
+        AuthorizationPolicies.AdminOnly,
+        policy =>
+            policy.RequireRole("Admin"));
+
+    options.AddPolicy(
+        AuthorizationPolicies.Management,
+        policy =>
+            policy.RequireRole(
+                "Admin",
+                "Manager"));
+
+    options.AddPolicy(
+        AuthorizationPolicies.ReporterOnly,
+        policy =>
+            policy.RequireRole(
+                "Reporter"));
+
+    options.AddPolicy(
+        AuthorizationPolicies.TechnicianOnly,
+        policy =>
+            policy.RequireRole(
+                "Technician"));
+});
 
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
@@ -180,6 +291,8 @@ using (var scope = app.Services.CreateScope())
     }
 
     await db.SaveChangesAsync();
+
+    await AppUserSeeder.SeedAsync(db);
 }
 
 // Configure the HTTP request pipeline.
@@ -191,6 +304,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

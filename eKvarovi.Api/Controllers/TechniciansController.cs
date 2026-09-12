@@ -18,6 +18,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpGet]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<ActionResult<List<TechnicianDto>>> GetTechnicians(
         [FromQuery] bool? isActive)
     {
@@ -43,6 +45,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<ActionResult<TechnicianDto>> GetTechnicianById(int id)
     {
         var technician = await _context.Technicians
@@ -57,6 +61,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpPost]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<ActionResult<TechnicianDto>> CreateTechnician(
         SaveTechnicianDto request)
     {
@@ -98,6 +104,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<IActionResult> UpdateTechnician(
         int id,
         SaveTechnicianDto request)
@@ -140,6 +148,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<IActionResult> DeleteTechnician(int id)
     {
         var technician = await _context.Technicians
@@ -174,6 +184,8 @@ public class TechniciansController : ControllerBase
     }
 
     [HttpGet("lookup")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.Management)]
     public async Task<ActionResult<List<LookupDto>>> GetTechniciansLookup()
     {
         var technicians = await _context.Technicians

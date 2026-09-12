@@ -18,6 +18,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.Management)]
     public async Task<ActionResult<List<LocationDto>>> GetLocations(
     [FromQuery] int? locationTypeId)
     {
@@ -43,6 +45,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.Management)]
     public async Task<ActionResult<LocationDto>> GetLocationById(int id)
     {
         var location = await _context.Locations
@@ -58,6 +62,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpPost]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<ActionResult<LocationDto>> CreateLocation(
         SaveLocationDto request)
     {
@@ -107,6 +113,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<IActionResult> UpdateLocation(
         int id,
         SaveLocationDto request)
@@ -155,6 +163,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
     public async Task<IActionResult> DeleteLocation(int id)
     {
         var location = await _context.Locations
@@ -181,6 +191,8 @@ public class LocationsController : ControllerBase
     }
 
     [HttpGet("lookup")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+        Policy = eKvarovi.Api.Security.AuthorizationPolicies.Management)]
     public async Task<ActionResult<List<LookupDto>>> GetLocationsLookup()
     {
         var locations = await _context.Locations

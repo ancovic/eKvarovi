@@ -8,6 +8,8 @@ namespace eKvarovi.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Microsoft.AspNetCore.Authorization.Authorize(
+    Policy = eKvarovi.Api.Security.AuthorizationPolicies.AdminOnly)]
 public class EmployeesController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;

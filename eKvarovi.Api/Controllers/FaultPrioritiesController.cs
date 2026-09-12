@@ -7,6 +7,8 @@ namespace eKvarovi.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Microsoft.AspNetCore.Authorization.Authorize(
+    Policy = eKvarovi.Api.Security.AuthorizationPolicies.Management)]
 public class FaultPrioritiesController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
