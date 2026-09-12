@@ -1,0 +1,111 @@
+﻿@page "/technicians/create"
+@rendermode InteractiveServer
+
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    Novi izvršitelj
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<!-- nema loading stanja jer stranica ne ucitava nista -->
+<EditForm Model="model"
+          OnValidSubmit="SaveTechnician"
+          FormName="technician-create">
+
+    <MudPaper Class="pa-4">
+
+        <MudTextField Label="Ime"
+                      @bind-Value="model.FirstName"
+                      Required="true"
+                      Class="mb-3" />
+
+        <MudTextField Label="Prezime"
+                      @bind-Value="model.LastName"
+                      Required="true"
+                      Class="mb-3" />
+
+        <MudTextField Label="Email"
+                      @bind-Value="model.Email"
+                      Required="true"
+                      Class="mb-3" />
+
+        <MudTextField Label="Telefon"
+                      @bind-Value="model.Phone"
+                      Class="mb-3" />
+
+        <MudTextField Label="Specijalizacija"
+                      @bind-Value="model.Specialization"
+                      Class="mb-3" />
+
+        <MudCheckBox T="bool"
+                     Label="Aktivan izvršitelj"
+                     @bind-Value="model.IsActive"
+                     Class="mb-3" />
+
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary">
+            Spremi
+        </MudButton>
+
+        <MudButton Href="/technicians"
+                   Variant="Variant.Text"
+                   Class="ml-2">
+            Odustani
+        </MudButton>
+
+    </MudPaper>
+</EditForm>
+
+@code {
+    private SaveTechnicianDto model = new()
+    {
+        IsActive = true
+    };
+
+    private string? errorMessage;
+
+    private async Task SaveTechnician()
+    {
+        if (string.IsNullOrWhiteSpace(model.FirstName) ||
+            string.IsNullOrWhiteSpace(model.LastName))
+        {
+            errorMessage =
+                "Ime i prezime izvršitelja su obavezni.";
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = "Email izvršitelja je obavezan.";
+            return;
+        }
+
+        var response =
+            await Http.PostAsJsonAsync(
+                "api/technicians",
+                model);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            errorMessage =
+                await response.Content.ReadAsStringAsync();
+
+            return;
+        }
+
+        Navigation.NavigateTo("/technicians");
+    }
+}

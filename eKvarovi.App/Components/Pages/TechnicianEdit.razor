@@ -1,0 +1,153 @@
+﻿@page "/technicians/edit/{Id:int}"
+@rendermode InteractiveServer
+
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">
+    Uredi izvršitelja
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <EditForm Model="model"
+              OnValidSubmit="SaveTechnician"
+              FormName="technician-edit">
+
+        <MudPaper Class="pa-4">
+
+            <MudTextField Label="Ime"
+                          @bind-Value="model.FirstName"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudTextField Label="Prezime"
+                          @bind-Value="model.LastName"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudTextField Label="Email"
+                          @bind-Value="model.Email"
+                          Required="true"
+                          Class="mb-3" />
+
+            <MudTextField Label="Telefon"
+                          @bind-Value="model.Phone"
+                          Class="mb-3" />
+
+            <MudTextField Label="Specijalizacija"
+                          @bind-Value="model.Specialization"
+                          Class="mb-3" />
+
+            <MudCheckBox T="bool"
+                         Label="Aktivan izvršitelj"
+                         @bind-Value="model.IsActive"
+                         Class="mb-3" />
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary">
+                Spremi
+            </MudButton>
+
+            <MudButton Href="/technicians"
+                       Variant="Variant.Text"
+                       Class="ml-2">
+                Odustani
+            </MudButton>
+
+        </MudPaper>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private SaveTechnicianDto model = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var technician =
+                await Http.GetFromJsonAsync<TechnicianDto>(
+                    $"api/technicians/{Id}");
+
+            if (technician is null)
+            {
+                errorMessage = "Izvršitelj nije pronađen.";
+                return;
+            }
+
+            model = new SaveTechnicianDto
+            {
+                FirstName = technician.FirstName,
+                LastName = technician.LastName,
+                Email = technician.Email,
+                Phone = technician.Phone,
+                Specialization = technician.Specialization,
+                IsActive = technician.IsActive
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Greška kod učitavanja izvršitelja: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveTechnician()
+    {
+        if (string.IsNullOrWhiteSpace(model.FirstName) ||
+            string.IsNullOrWhiteSpace(model.LastName))
+        {
+            errorMessage =
+                "Ime i prezime izvršitelja su obavezni.";
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = "Email izvršitelja je obavezan.";
+            return;
+        }
+
+        var response =
+            await Http.PutAsJsonAsync(
+                $"api/technicians/{Id}",
+                model);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            errorMessage =
+                await response.Content.ReadAsStringAsync();
+
+            return;
+        }
+
+        Navigation.NavigateTo("/technicians");
+    }
+}

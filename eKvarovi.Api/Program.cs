@@ -128,6 +128,57 @@ using (var scope = app.Services.CreateScope())
         );
     }
 
+    if (!await db.Technicians.AnyAsync())
+    {
+        db.Technicians.AddRange(
+            new Technician
+            {
+                FirstName = "Tomislav",
+                LastName = "Babić",
+                Email = "tomislav.babic@ekvarovi.local",
+                Phone = "091 222 1100",
+                Specialization = "Elektrika",
+                IsActive = true
+            },
+            new Technician
+            {
+                FirstName = "Nikola",
+                LastName = "Perić",
+                Email = "nikola.peric@ekvarovi.local",
+                Phone = "098 333 2200",
+                Specialization = "Vodoinstalacije",
+                IsActive = true
+            },
+            new Technician
+            {
+                FirstName = "Mario",
+                LastName = "Jurić",
+                Email = "mario.juric@ekvarovi.local",
+                Phone = "095 444 3300",
+                Specialization = "Grijanje",
+                IsActive = true
+            },
+            new Technician
+            {
+                FirstName = "Luka",
+                LastName = "Radić",
+                Email = "luka.radic@ekvarovi.local",
+                Phone = "092 555 4400",
+                Specialization = "Računalstvo i mreža",
+                IsActive = true
+            },
+            new Technician
+            {
+                FirstName = "Davor",
+                LastName = "Kovač",
+                Email = "davor.kovac@ekvarovi.local",
+                Phone = "099 666 5500",
+                Specialization = "Građevinski radovi",
+                IsActive = false
+            }
+        );
+    }
+
     await db.SaveChangesAsync();
 }
 
