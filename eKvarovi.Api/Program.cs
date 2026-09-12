@@ -292,6 +292,132 @@ using (var scope = app.Services.CreateScope())
 
     await db.SaveChangesAsync();
 
+    var reportEmployees = await db.Employees
+    .Include(employee => employee.Location)
+    .Where(employee =>
+        employee.IsActive &&
+        employee.Location != null &&
+        employee.Location.IsActive)
+    .OrderBy(employee => employee.LastName)
+    .ThenBy(employee => employee.FirstName)
+    .Take(4)
+    .ToListAsync();
+
+    if (!await db.FaultReports.AnyAsync() &&
+        reportEmployees.Count >= 3)
+    {
+        var receivedStatusId = await db.FaultStatuses
+            .Where(status => status.Name == "Zaprimljeno")
+            .Select(status => status.Id)
+            .FirstAsync();
+
+        var reviewedStatusId = await db.FaultStatuses
+            .Where(status => status.Name == "Pregledano")
+            .Select(status => status.Id)
+            .FirstAsync();
+
+        var waterTypeId = await db.FaultTypes
+            .Where(type => type.Name == "Voda")
+            .Select(type => type.Id)
+            .FirstAsync();
+
+        var networkTypeId = await db.FaultTypes
+            .Where(type => type.Name == "Mreža")
+            .Select(type => type.Id)
+            .FirstAsync();
+
+        var heatingTypeId = await db.FaultTypes
+            .Where(type => type.Name == "Grijanje")
+            .Select(type => type.Id)
+            .FirstAsync();
+
+        var mediumPriorityId = await db.FaultPriorities
+            .Where(priority => priority.Name == "Srednji")
+            .Select(priority => priority.Id)
+            .FirstAsync();
+
+        var highPriorityId = await db.FaultPriorities
+            .Where(priority => priority.Name == "Visok")
+            .Select(priority => priority.Id)
+            .FirstAsync();
+
+        var criticalPriorityId = await db.FaultPriorities
+            .Where(priority => priority.Name == "Kritičan")
+            .Select(priority => priority.Id)
+            .FirstAsync();
+
+        db.FaultReports.AddRange(
+            new FaultReport
+            {
+                Title = "Ne radi klima uređaj",
+                Description = "Klima uređaj u uredu se ne uključuje.",
+                CreatedAt = new DateTime(
+                    2026, 9, 5, 8, 30, 0,
+                    DateTimeKind.Utc),
+                LocationId = reportEmployees[0].LocationId,
+                ReporterId = reportEmployees[0].Id,
+                FaultStatusId = receivedStatusId
+            },
+            new FaultReport
+            {
+                Title = "Neispravna rasvjeta na stubištu",
+                Description = "Rasvjeta između prvog i drugog kata ne radi.",
+                CreatedAt = new DateTime(
+                    2026, 9, 6, 10, 15, 0,
+                    DateTimeKind.Utc),
+                LocationId = reportEmployees[1].LocationId,
+                ReporterId = reportEmployees[1].Id,
+                FaultStatusId = receivedStatusId
+            },
+            new FaultReport
+            {
+                Title = "Curenje vode u sanitarnom čvoru",
+                Description = "Voda curi ispod umivaonika.",
+                CreatedAt = new DateTime(
+                    2026, 9, 7, 7, 45, 0,
+                    DateTimeKind.Utc),
+                DueDate = new DateTime(2026, 9, 14),
+                LocationId = reportEmployees[2].LocationId,
+                ReporterId = reportEmployees[2].Id,
+                FaultStatusId = reviewedStatusId,
+                FaultTypeId = waterTypeId,
+                FaultPriorityId = highPriorityId
+            },
+            new FaultReport
+            {
+                Title = "Prekid mrežne veze",
+                Description = "Računala u jednom uredu nemaju pristup mreži.",
+                CreatedAt = new DateTime(
+                    2026, 9, 8, 12, 20, 0,
+                    DateTimeKind.Utc),
+                DueDate = new DateTime(2026, 9, 18),
+                LocationId = reportEmployees[0].LocationId,
+                ReporterId = reportEmployees[0].Id,
+                FaultStatusId = reviewedStatusId,
+                FaultTypeId = networkTypeId,
+                FaultPriorityId = mediumPriorityId
+            },
+            new FaultReport
+            {
+                Title = "Kvar sustava grijanja",
+                Description = "Grijanje ne radi u većem dijelu objekta.",
+                CreatedAt = new DateTime(
+                    2026, 9, 9, 6, 50, 0,
+                    DateTimeKind.Utc),
+                DueDate = new DateTime(2026, 9, 13),
+                LocationId = reportEmployees[2].LocationId,
+                ReporterId = reportEmployees[2].Id,
+                FaultStatusId = reviewedStatusId,
+                FaultTypeId = heatingTypeId,
+                FaultPriorityId = criticalPriorityId
+            }
+        );
+    }
+
+    await db.SaveChangesAsync();
+
+    await AppUserSeeder.SeedAsync(db);
+
     await AppUserSeeder.SeedAsync(db);
 }
 

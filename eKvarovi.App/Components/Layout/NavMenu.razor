@@ -28,6 +28,14 @@
             Home
         </MudNavLink>
 
+        @if (CurrentUser.HasAnyRole("Admin", "Manager"))
+        {
+            <MudNavLink Href="/faultreports"
+                        Icon="@Icons.Material.Filled.ReportProblem">
+                Prijave kvarova
+            </MudNavLink>
+        }
+
         @if (CurrentUser.HasRole("Admin"))
         {
             <MudNavLink Href="/locations"

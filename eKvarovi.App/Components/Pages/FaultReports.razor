@@ -1,0 +1,439 @@
+﻿@page "/faultreports"
+@rendermode InteractiveServer
+
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+
+<PageTitle>Prijave kvarova</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">
+    Prijave kvarova
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+
+        <MudTextField T="string"
+                      Label="Pretraži"
+                      Value="@searchString"
+                      ValueChanged="SearchChanged"
+                      Immediate="true"
+                      DebounceInterval="300"
+                      Variant="Variant.Outlined"
+                      Placeholder="Naslov, opis, lokacija ili prijavitelj" />
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Lokacija"
+                       @bind-Value="selectedLocationId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var location in locations)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)location.Id)">
+                        @location.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Vrsta kvara"
+                       @bind-Value="selectedTypeId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var type in faultTypes)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)type.Id)">
+                        @type.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Prioritet"
+                       @bind-Value="selectedPriorityId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var priority in faultPriorities)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)priority.Id)">
+                        @priority.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Status"
+                       @bind-Value="selectedStatusId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var status in faultStatuses)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)status.Id)">
+                        @status.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudDatePicker Label="Datum od"
+                           @bind-Date="dateFrom"
+                           Variant="Variant.Outlined"
+                           Clearable="true" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudDatePicker Label="Datum do"
+                           @bind-Date="dateTo"
+                           Variant="Variant.Outlined"
+                           Clearable="true" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="string"
+                       Label="Sortiraj po"
+                       @bind-Value="sortBy"
+                       Variant="Variant.Outlined">
+
+                <MudSelectItem Value="@("createdat")">
+                    Datum prijave
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("title")">
+                    Naslov
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("location")">
+                    Lokacija
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("status")">
+                    Status
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("priority")">
+                    Prioritet
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("duedate")">
+                    Rok
+                </MudSelectItem>
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="bool"
+                       Label="Smjer"
+                       @bind-Value="sortDescending"
+                       Variant="Variant.Outlined">
+
+                <MudSelectItem T="bool" Value="@true">
+                    Silazno
+                </MudSelectItem>
+
+                <MudSelectItem T="bool" Value="@false">
+                    Uzlazno
+                </MudSelectItem>
+
+            </MudSelect>
+        </MudItem>
+
+    </MudGrid>
+
+    <MudStack Row="true"
+              Spacing="2"
+              Class="mt-4">
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="ApplyFilters">
+            Primijeni
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   OnClick="ResetFilters">
+            Resetiraj
+        </MudButton>
+
+    </MudStack>
+</MudPaper>
+
+<MudTable Items="@reports"
+          Hover="true"
+          Striped="true"
+          Bordered="true"
+          Dense="true"
+          Loading="@isLoading">
+
+    <HeaderContent>
+        <MudTh>Naslov</MudTh>
+        <MudTh>Lokacija</MudTh>
+        <MudTh>Prijavitelj</MudTh>
+        <MudTh>Vrsta</MudTh>
+        <MudTh>Prioritet</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Datum prijave</MudTh>
+        <MudTh>Rok</MudTh>
+    </HeaderContent>
+
+    <RowTemplate>
+        <MudTd DataLabel="Naslov">
+            @context.Title
+        </MudTd>
+
+        <MudTd DataLabel="Lokacija">
+            @context.LocationName
+        </MudTd>
+
+        <MudTd DataLabel="Prijavitelj">
+            @context.ReporterName
+        </MudTd>
+
+        <MudTd DataLabel="Vrsta">
+            @(context.FaultTypeName ?? "-")
+        </MudTd>
+
+        <MudTd DataLabel="Prioritet">
+            @(context.FaultPriorityName ?? "-")
+        </MudTd>
+
+        <MudTd DataLabel="Status">
+            <MudChip T="string"
+                     Size="Size.Small"
+                     Color="@GetStatusColor(context.FaultStatusName)">
+                @context.FaultStatusName
+            </MudChip>
+        </MudTd>
+
+        <MudTd DataLabel="Datum prijave">
+            @context.CreatedAt.ToString("dd.MM.yyyy.")
+        </MudTd>
+
+        <MudTd DataLabel="Rok">
+            @(context.DueDate?.ToString("dd.MM.yyyy.") ?? "-")
+        </MudTd>
+    </RowTemplate>
+
+    <NoRecordsContent>
+        <MudText>
+            Nema prijava koje odgovaraju zadanim filterima.
+        </MudText>
+    </NoRecordsContent>
+
+</MudTable>
+
+@code {
+    private List<FaultReportDto> reports = new();
+
+    private List<LookupDto> locations = new();
+    private List<LookupDto> faultTypes = new();
+    private List<LookupDto> faultPriorities = new();
+    private List<LookupDto> faultStatuses = new();
+
+    private string searchString = string.Empty;
+
+    private int? selectedLocationId;
+    private int? selectedTypeId;
+    private int? selectedPriorityId;
+    private int? selectedStatusId;
+
+    private DateTime? dateFrom;
+    private DateTime? dateTo;
+
+    private string sortBy = "createdat";
+    private bool sortDescending = true;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadLookups();
+            await LoadFaultReports();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Podatke nije moguće učitati: {ex.Message}";
+        }
+    }
+
+    private async Task LoadLookups()
+    {
+        locations =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/locations/lookup")
+            ?? new();
+
+        faultTypes =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/faulttypes")
+            ?? new();
+
+        faultPriorities =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/faultpriorities")
+            ?? new();
+
+        faultStatuses =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/faultstatuses")
+            ?? new();
+    }
+
+    private async Task LoadFaultReports()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var queryParameters = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(searchString))
+            {
+                queryParameters.Add(
+                    $"search={Uri.EscapeDataString(searchString.Trim())}");
+            }
+
+            if (selectedLocationId.HasValue)
+            {
+                queryParameters.Add(
+                    $"locationId={selectedLocationId.Value}");
+            }
+
+            if (selectedTypeId.HasValue)
+            {
+                queryParameters.Add(
+                    $"typeId={selectedTypeId.Value}");
+            }
+
+            if (selectedPriorityId.HasValue)
+            {
+                queryParameters.Add(
+                    $"priorityId={selectedPriorityId.Value}");
+            }
+
+            if (selectedStatusId.HasValue)
+            {
+                queryParameters.Add(
+                    $"statusId={selectedStatusId.Value}");
+            }
+
+            if (dateFrom.HasValue)
+            {
+                queryParameters.Add(
+                    $"dateFrom={dateFrom.Value:yyyy-MM-dd}");
+            }
+
+            if (dateTo.HasValue)
+            {
+                queryParameters.Add(
+                    $"dateTo={dateTo.Value:yyyy-MM-dd}");
+            }
+
+            queryParameters.Add(
+                $"sortBy={sortBy}");
+
+            queryParameters.Add(
+                $"sortDescending={sortDescending.ToString().ToLowerInvariant()}");
+
+            var url = "api/faultreports";
+
+            if (queryParameters.Count > 0)
+            {
+                url += "?" +
+                    string.Join("&", queryParameters);
+            }
+
+            reports =
+                await Http.GetFromJsonAsync<List<FaultReportDto>>(
+                    url)
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Prijave kvarova nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchChanged(string value)
+    {
+        searchString = value;
+
+        await LoadFaultReports();
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadFaultReports();
+    }
+
+    private async Task ResetFilters()
+    {
+        searchString = string.Empty;
+
+        selectedLocationId = null;
+        selectedTypeId = null;
+        selectedPriorityId = null;
+        selectedStatusId = null;
+
+        dateFrom = null;
+        dateTo = null;
+
+        sortBy = "createdat";
+        sortDescending = true;
+
+        await LoadFaultReports();
+    }
+
+    private static Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Zaprimljeno" => Color.Info,
+            "Pregledano" => Color.Primary,
+            "Dodijeljeno" => Color.Secondary,
+            "U radu" => Color.Warning,
+            "Riješeno" => Color.Success,
+            "Zatvoreno" => Color.Default,
+            _ => Color.Default
+        };
+    }
+}
