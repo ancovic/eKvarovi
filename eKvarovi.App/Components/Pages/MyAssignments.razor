@@ -4,10 +4,12 @@
 @using eKvarovi.App.Services
 @using eKvarovi.Shared.DTOs
 @using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
 
 @inject HttpClient Http
 @inject CurrentUserService CurrentUser
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 
 <PageTitle>Moji radni nalozi</PageTitle>
 
@@ -198,6 +200,13 @@ else
                                 ? interventionMaterials
                                 : new List<InterventionMaterialDto>();
 
+                var interventionMedia =
+                            mediaByIntervention.TryGetValue(
+                                activeIntervention.Id,
+                                out var mediaItems)
+                                ? mediaItems
+                                : new List<FaultMediaDto>();
+
                 <MudDivider Class="my-4" />
 
                     <MudText Typo="Typo.h6"
@@ -285,9 +294,133 @@ else
 
                         </MudItem>
 
-                    </MudGrid>
+                </MudGrid>
 
-                    <MudDivider Class="my-4" />
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.h6"
+                         Class="mb-3">
+                    Privitci intervencije
+                </MudText>
+
+                @if (interventionMedia.Count == 0)
+                {
+                    <MudText Class="mb-3">
+                        Intervencija još nema privitaka.
+                    </MudText>
+                }
+                else
+                {
+                    <MudTable Items="@interventionMedia"
+                              Dense="true"
+                              Bordered="true"
+                              Class="mb-4">
+
+                        <HeaderContent>
+                            <MudTh>Vrsta</MudTh>
+                            <MudTh>Datoteka</MudTh>
+                            <MudTh>Veličina</MudTh>
+                            <MudTh>Pregled</MudTh>
+                            <MudTh>Akcija</MudTh>
+                        </HeaderContent>
+
+                        <RowTemplate>
+
+                            <MudTd DataLabel="Vrsta">
+                                @GetMediaPurposeLabel(context.Purpose)
+                            </MudTd>
+
+                            <MudTd DataLabel="Datoteka">
+                                @context.OriginalFileName
+                            </MudTd>
+
+                            <MudTd DataLabel="Veličina">
+                                @FormatBytes(context.FileSize)
+                            </MudTd>
+
+                            <MudTd DataLabel="Pregled">
+                                <a href="@context.Url"
+                                   target="_blank">
+                                    Otvori
+                                </a>
+                            </MudTd>
+
+                            <MudTd DataLabel="Akcija">
+                                <MudButton Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => DeleteMedia(
+                                                                          assignment.FaultReportId,
+                                                                          context.Id))">
+                                    Izbriši
+                                </MudButton>
+                            </MudTd>
+
+                        </RowTemplate>
+
+                        <NoRecordsContent>
+                            <MudText Class="pa-3">
+                                Nema privitaka.
+                            </MudText>
+                        </NoRecordsContent>
+
+                    </MudTable>
+                }
+
+                <MudGrid Class="mb-4">
+
+                    <MudItem xs="12" md="6">
+
+                        <MudText Typo="Typo.subtitle2"
+                                 Class="mb-2">
+                            Fotografija nakon rada
+                        </MudText>
+
+                        <InputFile OnChange="@((InputFileChangeEventArgs args) =>
+                                                          HandleAfterPhotoSelected(
+                                                              activeIntervention.Id,
+                                                              args))"
+                                   accept=".jpg,.jpeg,.png,.webp" />
+
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Disabled="isUploading"
+                                   OnClick="@(() => UploadAfterPhoto(
+                                                          assignment.FaultReportId,
+                                                          activeIntervention.Id))"
+                                   Class="mt-2">
+                            Dodaj fotografiju
+                        </MudButton>
+
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+
+                        <MudText Typo="Typo.subtitle2"
+                                 Class="mb-2">
+                            PDF dokument
+                        </MudText>
+
+                        <InputFile OnChange="@((InputFileChangeEventArgs args) =>
+                                                          HandleDocumentSelected(
+                                                              activeIntervention.Id,
+                                                              args))"
+                                   accept=".pdf" />
+
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Disabled="isUploading"
+                                   OnClick="@(() => UploadDocument(
+                                                          assignment.FaultReportId,
+                                                          activeIntervention.Id))"
+                                   Class="mt-2">
+                            Dodaj dokument
+                        </MudButton>
+
+                    </MudItem>
+
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
 
                 <MudText Typo="Typo.h6"
                          Class="mb-3">
@@ -346,6 +479,20 @@ else
 
     private Dictionary<int, decimal?> quantityByIntervention =
         new();
+
+    private Dictionary<int, List<FaultMediaDto>> mediaByIntervention =
+    new();
+
+    private Dictionary<int, IBrowserFile?> afterPhotoByIntervention =
+        new();
+
+    private Dictionary<int, IBrowserFile?> documentByIntervention =
+        new();
+
+    private const long MaxFileSize =
+        10 * 1024 * 1024;
+
+    private bool isUploading;
 
     private bool isLoading = true;
     private bool isSaving;
@@ -406,9 +553,14 @@ else
             materialsByIntervention.Clear();
             selectedMaterialByIntervention.Clear();
             quantityByIntervention.Clear();
+            mediaByIntervention.Clear();
 
             foreach (var assignment in assignments)
             {
+                var reportMedia =
+                    await Http.GetFromJsonAsync<List<FaultMediaDto>>(
+                        $"api/faultreports/{assignment.FaultReportId}/media")
+                    ?? new();
                 var interventions =
                     await Http.GetFromJsonAsync<List<InterventionDto>>(
                         $"api/interventions/workassignment/{assignment.Id}")
@@ -426,6 +578,13 @@ else
 
                     materialsByIntervention[intervention.Id] =
                         materials;
+
+                    mediaByIntervention[intervention.Id] =
+                        reportMedia
+                            .Where(media =>
+                                media.InterventionId ==
+                                    intervention.Id)
+                            .ToList();
 
                     if (intervention.FinishedAt is null)
                     {
@@ -692,5 +851,240 @@ else
         {
             isSaving = false;
         }
+    }
+
+    private void HandleAfterPhotoSelected(
+    int interventionId,
+    InputFileChangeEventArgs args)
+    {
+        afterPhotoByIntervention[interventionId] =
+            args.File;
+
+        errorMessage = null;
+    }
+
+    private void HandleDocumentSelected(
+        int interventionId,
+        InputFileChangeEventArgs args)
+    {
+        documentByIntervention[interventionId] =
+            args.File;
+
+        errorMessage = null;
+    }
+
+    private IBrowserFile? GetAfterPhoto(
+        int interventionId)
+    {
+        return afterPhotoByIntervention.TryGetValue(
+            interventionId,
+            out var file)
+            ? file
+            : null;
+    }
+
+    private IBrowserFile? GetDocument(
+        int interventionId)
+    {
+        return documentByIntervention.TryGetValue(
+            interventionId,
+            out var file)
+            ? file
+            : null;
+    }
+
+    private async Task UploadAfterPhoto(
+        int faultReportId,
+        int interventionId)
+    {
+        var file =
+            GetAfterPhoto(
+                interventionId);
+
+        if (file is null)
+        {
+            errorMessage =
+                "Odaberi fotografiju.";
+
+            return;
+        }
+
+        await UploadMedia(
+            faultReportId,
+            interventionId,
+            file,
+            "after-photo");
+
+        afterPhotoByIntervention[interventionId] =
+            null;
+    }
+
+    private async Task UploadDocument(
+        int faultReportId,
+        int interventionId)
+    {
+        var file =
+            GetDocument(
+                interventionId);
+
+        if (file is null)
+        {
+            errorMessage =
+                "Odaberi PDF dokument.";
+
+            return;
+        }
+
+        await UploadMedia(
+            faultReportId,
+            interventionId,
+            file,
+            "document");
+
+        documentByIntervention[interventionId] =
+            null;
+    }
+
+    private async Task UploadMedia(
+        int faultReportId,
+        int interventionId,
+        IBrowserFile file,
+        string endpoint)
+    {
+        errorMessage = null;
+
+        if (file.Size > MaxFileSize)
+        {
+            errorMessage =
+                "Datoteka smije imati najviše 10 MB.";
+
+            return;
+        }
+
+        isUploading = true;
+
+        try
+        {
+            using var form =
+                new MultipartFormDataContent();
+
+            await using var stream =
+                file.OpenReadStream(
+                    MaxFileSize);
+
+            using var fileContent =
+                new StreamContent(
+                    stream);
+
+            fileContent.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    file.ContentType);
+
+            form.Add(
+                fileContent,
+                "file",
+                file.Name);
+
+            var response =
+                await Http.PostAsync(
+                    $"api/faultreports/{faultReportId}/media/interventions/{interventionId}/{endpoint}",
+                    form);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Privitak nije moguće učitati."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadAssignments();
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Privitak nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private async Task DeleteMedia(
+        int faultReportId,
+        int mediaId)
+    {
+        var confirmed =
+            await DialogService.ShowMessageBoxAsync(
+                "Brisanje privitka",
+                "Želiš li sigurno izbrisati ovaj privitak?",
+                yesText: "Izbriši",
+                cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        errorMessage = null;
+
+        try
+        {
+            var response =
+                await Http.DeleteAsync(
+                    $"api/faultreports/{faultReportId}/media/{mediaId}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Privitak nije moguće izbrisati."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadAssignments();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Privitak nije moguće izbrisati: {ex.Message}";
+        }
+    }
+
+    private static string GetMediaPurposeLabel(
+        string purpose)
+    {
+        return purpose switch
+        {
+            "AfterPhoto" =>
+                "Fotografija nakon rada",
+
+            "Document" =>
+                "Dokument",
+
+            _ =>
+                purpose
+        };
+    }
+
+    private static string FormatBytes(
+        long bytes)
+    {
+        return bytes >= 1024 * 1024
+            ? $"{bytes / 1024d / 1024d:0.0} MB"
+            : $"{bytes / 1024d:0.0} KB";
     }
 }

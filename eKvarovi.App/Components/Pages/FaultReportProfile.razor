@@ -311,6 +311,281 @@ else
 
         </MudPaper>
 
+        <MudPaper Class="pa-5">
+
+            <MudText Typo="Typo.h5"
+                     Class="mb-3">
+                Intervencije i rezultat
+            </MudText>
+
+            @if (interventions.Count == 0)
+            {
+                <MudText>
+                    Za ovu prijavu još nema intervencija.
+                </MudText>
+            }
+            else
+            {
+                @foreach (var intervention in interventions)
+                {
+                    var usedMaterials =
+                        materialsByIntervention.TryGetValue(
+                            intervention.Id,
+                            out var interventionMaterials)
+                            ? interventionMaterials
+                            : new List<InterventionMaterialDto>();
+
+                    <MudPaper Class="pa-3 mb-3">
+
+                        <MudStack Row="true"
+                                  Spacing="2"
+                                  Class="mb-3">
+
+                            <MudText Typo="Typo.h6">
+                                Intervencija #@intervention.Id
+                            </MudText>
+
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Color="@GetInterventionStatusColor(
+                                                                      intervention.InterventionStatusName)">
+                                @intervention.InterventionStatusName
+                            </MudChip>
+
+                        </MudStack>
+
+                        <MudGrid>
+
+                            <MudItem xs="12" md="4">
+                                <MudText Typo="Typo.subtitle2">
+                                    Izvršitelj
+                                </MudText>
+
+                                <MudText>
+                                    @intervention.TechnicianName
+                                </MudText>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4">
+                                <MudText Typo="Typo.subtitle2">
+                                    Početak
+                                </MudText>
+
+                                <MudText>
+                                    @(intervention.StartedAt?.ToString(
+                                        "dd.MM.yyyy. HH:mm") ?? "-")
+                                </MudText>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4">
+                                <MudText Typo="Typo.subtitle2">
+                                    Završetak
+                                </MudText>
+
+                                <MudText>
+                                    @(intervention.FinishedAt?.ToString(
+                                        "dd.MM.yyyy. HH:mm") ?? "-")
+                                </MudText>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.subtitle2">
+                                    Rezultat / bilješka rada
+                                </MudText>
+
+                                <MudText>
+                                    @(intervention.WorkNote ?? "-")
+                                </MudText>
+                            </MudItem>
+
+                        </MudGrid>
+
+                        @if (CanManage)
+                        {
+                            <MudDivider Class="my-3" />
+
+                            <MudText Typo="Typo.subtitle2"
+                                     Class="mb-2">
+                                Utrošeni materijal
+                            </MudText>
+
+                            @if (usedMaterials.Count == 0)
+                            {
+                                <MudText>
+                                    Nema evidentiranog materijala.
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudTable Items="@usedMaterials"
+                                          Dense="true"
+                                          Bordered="true">
+
+                                    <HeaderContent>
+                                        <MudTh>Materijal</MudTh>
+                                        <MudTh>Količina</MudTh>
+                                        <MudTh>Jedinica</MudTh>
+                                    </HeaderContent>
+
+                                    <RowTemplate>
+
+                                        <MudTd DataLabel="Materijal">
+                                            @context.MaterialName
+                                        </MudTd>
+
+                                        <MudTd DataLabel="Količina">
+                                            @context.Quantity
+                                        </MudTd>
+
+                                        <MudTd DataLabel="Jedinica">
+                                            @context.MaterialUnitName
+                                        </MudTd>
+
+                                    </RowTemplate>
+
+                                    <NoRecordsContent>
+                                        <MudText Class="pa-3">
+                                            Nema evidentiranog materijala.
+                                        </MudText>
+                                    </NoRecordsContent>
+
+                                </MudTable>
+                            }
+                        }
+
+                    </MudPaper>
+                }
+            }
+
+        </MudPaper>
+
+        <MudPaper Class="pa-5">
+
+            <MudText Typo="Typo.h5"
+                     Class="mb-3">
+                Privitci nakon rada
+            </MudText>
+
+            <MudText Typo="Typo.h6"
+                     Class="mb-3">
+                Fotografije nakon rada
+            </MudText>
+
+            @if (AfterPhotos.Count == 0)
+            {
+                <MudText Class="mb-4">
+                    Nema fotografija nakon rada.
+                </MudText>
+            }
+            else
+            {
+                <MudGrid Class="mb-4">
+
+                    @foreach (var media in AfterPhotos)
+                    {
+                        <MudItem xs="12"
+                                 sm="6"
+                                 md="4">
+
+                            <MudCard>
+
+                                <img src="@media.Url"
+                                     alt="@media.OriginalFileName"
+                                     style="width:100%;height:240px;object-fit:cover;display:block;" />
+
+                                <MudCardContent>
+
+                                    <MudText Typo="Typo.body2">
+                                        @media.OriginalFileName
+                                    </MudText>
+
+                                    <MudText Typo="Typo.caption">
+                                        @FormatBytes(media.FileSize)
+                                        ·
+                                        @media.UploadedAt.ToString(
+                                            "dd.MM.yyyy. HH:mm")
+                                    </MudText>
+
+                                </MudCardContent>
+
+                                <MudCardActions>
+
+                                    <MudButton Href="@media.Url"
+                                               Target="_blank">
+                                        Otvori
+                                    </MudButton>
+
+                                </MudCardActions>
+
+                            </MudCard>
+
+                        </MudItem>
+                    }
+
+                </MudGrid>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6"
+                     Class="mb-3">
+                Dokumenti
+            </MudText>
+
+            @if (Documents.Count == 0)
+            {
+                <MudText>
+                    Nema dokumenata.
+                </MudText>
+            }
+            else
+            {
+                <MudTable Items="@Documents"
+                          Dense="true"
+                          Bordered="true">
+
+                    <HeaderContent>
+                        <MudTh>Datoteka</MudTh>
+                        <MudTh>Veličina</MudTh>
+                        <MudTh>Dodano</MudTh>
+                        <MudTh>Pregled</MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+
+                        <MudTd DataLabel="Datoteka">
+                            @context.OriginalFileName
+                        </MudTd>
+
+                        <MudTd DataLabel="Veličina">
+                            @FormatBytes(context.FileSize)
+                        </MudTd>
+
+                        <MudTd DataLabel="Dodano">
+                            @context.UploadedAt.ToString(
+                                "dd.MM.yyyy. HH:mm")
+                        </MudTd>
+
+                        <MudTd DataLabel="Pregled">
+                            <MudButton Href="@context.Url"
+                                       Target="_blank">
+                                Otvori
+                            </MudButton>
+                        </MudTd>
+
+                    </RowTemplate>
+
+                    <NoRecordsContent>
+                        <MudText Class="pa-3">
+                            Nema dokumenata.
+                        </MudText>
+                    </NoRecordsContent>
+
+                </MudTable>
+            }
+
+        </MudPaper>
+
         @if (CanManage)
         {
             <MudPaper Class="pa-5">
@@ -400,6 +675,10 @@ else
     private WorkAssignmentDto? latestAssignment;
     private List<WorkAssignmentDto> assignmentHistory = new();
     private List<LookupDto> technicians = new();
+    private List<InterventionDto> interventions = new();
+
+    private Dictionary<int, List<InterventionMaterialDto>> materialsByIntervention =
+        new();
 
     private int? selectedTechnicianId;
     private string? assignmentNote;
@@ -429,6 +708,18 @@ else
         mediaItems
             .Where(media =>
                 media.Purpose == "BeforePhoto")
+            .ToList();
+
+    private List<FaultMediaDto> AfterPhotos =>
+    mediaItems
+        .Where(media =>
+            media.Purpose == "AfterPhoto")
+        .ToList();
+
+    private List<FaultMediaDto> Documents =>
+        mediaItems
+            .Where(media =>
+                media.Purpose == "Document")
             .ToList();
 
     protected override async Task OnAfterRenderAsync(
@@ -505,6 +796,8 @@ else
                         "api/technicians/lookup")
                     ?? new();
             }
+
+            await LoadInterventionData();
         }
         catch (HttpRequestException ex)
         {
@@ -627,6 +920,69 @@ else
         {
             isAssigning = false;
         }
+    }
+
+    private async Task LoadInterventionData()
+    {
+        interventions.Clear();
+        materialsByIntervention.Clear();
+
+        if (CanManage)
+        {
+            foreach (var assignment in assignmentHistory)
+            {
+                var assignmentInterventions =
+                    await Http.GetFromJsonAsync<List<InterventionDto>>(
+                        $"api/interventions/workassignment/{assignment.Id}")
+                    ?? new();
+
+                interventions.AddRange(
+                    assignmentInterventions);
+            }
+        }
+        else if (latestAssignment is not null)
+        {
+            var assignmentInterventions =
+                await Http.GetFromJsonAsync<List<InterventionDto>>(
+                    $"api/interventions/workassignment/{latestAssignment.Id}")
+                ?? new();
+
+            interventions.AddRange(
+                assignmentInterventions);
+        }
+
+        interventions =
+            interventions
+                .OrderByDescending(intervention =>
+                    intervention.CreatedAt)
+                .ToList();
+
+        if (CanManage)
+        {
+            foreach (var intervention in interventions)
+            {
+                var materials =
+                    await Http.GetFromJsonAsync<List<InterventionMaterialDto>>(
+                        $"api/interventions/{intervention.Id}/materials")
+                    ?? new();
+
+                materialsByIntervention[intervention.Id] =
+                    materials;
+            }
+        }
+    }
+
+    private static Color GetInterventionStatusColor(
+    string status)
+    {
+        return status switch
+        {
+            "Planirana" => Color.Default,
+            "U tijeku" => Color.Warning,
+            "Završena" => Color.Success,
+            "Neuspješna" => Color.Error,
+            _ => Color.Default
+        };
     }
 
     private static Color GetStatusColor(
