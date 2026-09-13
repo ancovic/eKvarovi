@@ -1,0 +1,293 @@
+﻿@page "/users"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Korisnici</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Korisnici
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (CurrentUser.HasRole("Admin"))
+{
+    <MudPaper Class="pa-4 mb-4">
+
+        <MudGrid AlignItems="AlignItems.Center">
+
+            <MudItem xs="12" md="7">
+
+                <MudTextField T="string"
+                              Label="Pretraži korisnike"
+                              @bind-Value="searchString"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search" />
+
+            </MudItem>
+
+            <MudItem xs="12" md="2">
+
+                <MudButton Variant="Variant.Outlined"
+                           OnClick="ResetSearch">
+                    Reset
+                </MudButton>
+
+            </MudItem>
+
+            <MudItem xs="12" md="3">
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Href="/users/create"
+                           FullWidth="true">
+                    Novi korisnik
+                </MudButton>
+
+            </MudItem>
+
+        </MudGrid>
+
+    </MudPaper>
+
+    <MudTable T="UserDto"
+              Items="@FilteredUsers"
+              Hover="true"
+              Striped="true"
+              Bordered="true"
+              Dense="true">
+
+        <HeaderContent>
+            <MudTh>Korisnik</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Uloge</MudTh>
+            <MudTh>Prijavitelj</MudTh>
+            <MudTh>Izvršitelj</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Akcija</MudTh>
+        </HeaderContent>
+
+        <RowTemplate>
+
+            <MudTd DataLabel="Korisnik">
+                @context.DisplayName
+            </MudTd>
+
+            <MudTd DataLabel="Email">
+                @context.Email
+            </MudTd>
+
+            <MudTd DataLabel="Uloge">
+                @string.Join(", ", context.Roles)
+            </MudTd>
+
+            <MudTd DataLabel="Prijavitelj">
+                @GetProfileName(
+                    employees,
+                    context.EmployeeId)
+            </MudTd>
+
+            <MudTd DataLabel="Izvršitelj">
+                @GetProfileName(
+                    technicians,
+                    context.TechnicianId)
+            </MudTd>
+
+            <MudTd DataLabel="Status">
+
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="@(context.IsActive
+                                    ? Color.Success
+                                    : Color.Default)">
+                    @(context.IsActive
+                        ? "Aktivan"
+                        : "Neaktivan")
+                </MudChip>
+
+            </MudTd>
+
+            <MudTd DataLabel="Akcija">
+
+                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                               Color="Color.Primary"
+                               Href="@($"/users/edit/{context.Id}")" />
+
+            </MudTd>
+
+        </RowTemplate>
+
+        <NoRecordsContent>
+            <MudText Class="pa-4">
+                Nema korisnika za prikaz.
+            </MudText>
+        </NoRecordsContent>
+
+    </MudTable>
+}
+
+@code {
+    private List<UserDto> users =
+        new();
+
+    private List<LookupDto> employees =
+        new();
+
+    private List<LookupDto> technicians =
+        new();
+
+    private bool isLoading = true;
+
+    private string searchString =
+        string.Empty;
+
+    private string? errorMessage;
+
+    private IEnumerable<UserDto> FilteredUsers =>
+        string.IsNullOrWhiteSpace(
+            searchString)
+            ? users
+            : users.Where(
+                UserMatchesSearch);
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo(
+                "/login");
+
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Admin"))
+        {
+            errorMessage =
+                "Nemaš ovlast za upravljanje korisnicima.";
+
+            isLoading = false;
+
+            StateHasChanged();
+
+            return;
+        }
+
+        await LoadUsers();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            users =
+                await Http.GetFromJsonAsync<List<UserDto>>(
+                    "api/users")
+                ?? new();
+
+            employees =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/users/employees")
+                ?? new();
+
+            technicians =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/users/technicians")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Korisnike nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private bool UserMatchesSearch(
+        UserDto user)
+    {
+        var search =
+            searchString.Trim();
+
+        return user.DisplayName.Contains(
+                   search,
+                   StringComparison.OrdinalIgnoreCase) ||
+               user.Email.Contains(
+                   search,
+                   StringComparison.OrdinalIgnoreCase) ||
+               user.Roles.Any(role =>
+                   role.Contains(
+                       search,
+                       StringComparison.OrdinalIgnoreCase)) ||
+               GetProfileName(
+                   employees,
+                   user.EmployeeId)
+                   .Contains(
+                       search,
+                       StringComparison.OrdinalIgnoreCase) ||
+               GetProfileName(
+                   technicians,
+                   user.TechnicianId)
+                   .Contains(
+                       search,
+                       StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ResetSearch()
+    {
+        searchString =
+            string.Empty;
+    }
+
+    private static string GetProfileName(
+        List<LookupDto> items,
+        int? id)
+    {
+        if (!id.HasValue)
+        {
+            return "-";
+        }
+
+        return items
+                   .FirstOrDefault(item =>
+                       item.Id == id.Value)
+                   ?.Name
+               ?? $"#{id.Value}";
+    }
+}

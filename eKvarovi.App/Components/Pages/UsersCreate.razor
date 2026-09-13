@@ -1,0 +1,371 @@
+﻿@page "/users/create"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Novi korisnik</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Novi korisnik
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (CurrentUser.HasRole("Admin"))
+{
+    <EditForm Model="model"
+              OnValidSubmit="Save"
+              FormName="user-create">
+
+        <MudPaper Class="pa-4"
+                  Style="max-width: 700px">
+
+            <MudTextField T="string"
+                          Label="Email"
+                          @bind-Value="model.Email"
+                          Required="true"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          Label="Naziv korisnika"
+                          @bind-Value="model.DisplayName"
+                          Required="true"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          Label="Lozinka"
+                          @bind-Value="model.Password"
+                          InputType="InputType.Password"
+                          Required="true"
+                          Variant="Variant.Outlined"
+                          Class="mb-4" />
+
+            <MudText Typo="Typo.h6"
+                     Class="mb-2">
+                Uloge
+            </MudText>
+
+            @foreach (var role in roles)
+            {
+                <MudCheckBox T="bool"
+                             Value="@model.RoleIds.Contains(role.Id)"
+                             ValueChanged="@((bool value) =>
+                                                              SetRole(role.Id, value))"
+                             Label="@role.Name"
+                             Class="mr-4 mb-2" />
+            }
+
+            @if (HasRole("Prijavitelj"))
+            {
+                <MudSelect T="int?"
+                           Label="Prijavitelj"
+                           @bind-Value="model.EmployeeId"
+                           Required="true"
+                           Variant="Variant.Outlined"
+                           Class="mt-3 mb-3">
+
+                    @foreach (var employee in employees)
+                    {
+                        <MudSelectItem T="int?"
+                                       Value="@((int?)employee.Id)">
+                            @employee.Name
+                        </MudSelectItem>
+                    }
+
+                </MudSelect>
+            }
+
+            @if (HasRole("Izvršitelj"))
+            {
+                <MudSelect T="int?"
+                           Label="Izvršitelj"
+                           @bind-Value="model.TechnicianId"
+                           Required="true"
+                           Variant="Variant.Outlined"
+                           Class="mb-3">
+
+                    @foreach (var technician in technicians)
+                    {
+                        <MudSelectItem T="int?"
+                                       Value="@((int?)technician.Id)">
+                            @technician.Name
+                        </MudSelectItem>
+                    }
+
+                </MudSelect>
+            }
+
+            <MudStack Row="true"
+                      Spacing="2"
+                      Class="mt-4">
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isSaving">
+                    @(isSaving
+                        ? "Spremanje..."
+                        : "Spremi")
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Href="/users">
+                    Odustani
+                </MudButton>
+
+            </MudStack>
+
+        </MudPaper>
+
+    </EditForm>
+}
+
+@code {
+    private SaveUserDto model =
+        new();
+
+    private List<LookupDto> roles =
+        new();
+
+    private List<LookupDto> employees =
+        new();
+
+    private List<LookupDto> technicians =
+        new();
+
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo(
+                "/login");
+
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Admin"))
+        {
+            errorMessage =
+                "Nemaš ovlast za kreiranje korisnika.";
+
+            isLoading = false;
+
+            StateHasChanged();
+
+            return;
+        }
+
+        await LoadLookups();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadLookups()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            roles =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/users/roles")
+                ?? new();
+
+            employees =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/users/employees")
+                ?? new();
+
+            technicians =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/users/technicians")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SetRole(
+        int roleId,
+        bool selected)
+    {
+        if (selected)
+        {
+            if (!model.RoleIds.Contains(
+                    roleId))
+            {
+                model.RoleIds.Add(
+                    roleId);
+            }
+        }
+        else
+        {
+            model.RoleIds.Remove(
+                roleId);
+
+            var role =
+                roles.FirstOrDefault(item =>
+                    item.Id == roleId);
+
+            if (role?.Name == "Prijavitelj")
+            {
+                model.EmployeeId =
+                    null;
+            }
+
+            if (role?.Name == "Izvršitelj")
+            {
+                model.TechnicianId =
+                    null;
+            }
+        }
+    }
+
+    private bool HasRole(
+        string roleName)
+    {
+        var role =
+            roles.FirstOrDefault(item =>
+                item.Name == roleName);
+
+        return role is not null &&
+               model.RoleIds.Contains(
+                   role.Id);
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(
+                model.Email))
+        {
+            errorMessage =
+                "Email je obavezan.";
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                model.DisplayName))
+        {
+            errorMessage =
+                "Naziv korisnika je obavezan.";
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                model.Password))
+        {
+            errorMessage =
+                "Lozinka je obavezna.";
+
+            return;
+        }
+
+        if (model.RoleIds.Count == 0)
+        {
+            errorMessage =
+                "Odaberi barem jednu ulogu.";
+
+            return;
+        }
+
+        if (HasRole("Prijavitelj") &&
+            !model.EmployeeId.HasValue)
+        {
+            errorMessage =
+                "Za ulogu Prijavitelj odaberi djelatnika.";
+
+            return;
+        }
+
+        if (HasRole("Izvršitelj") &&
+            !model.TechnicianId.HasValue)
+        {
+            errorMessage =
+                "Za ulogu Izvršitelj odaberi izvršitelja.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var response =
+                await Http.PostAsJsonAsync(
+                    "api/users",
+                    model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(
+                        message)
+                        ? "Korisnika nije moguće spremiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                "/users");
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Korisnika nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}
