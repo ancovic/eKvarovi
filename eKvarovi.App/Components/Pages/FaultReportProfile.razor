@@ -646,6 +646,19 @@ else
         <MudStack Row="true"
                   Spacing="2">
 
+            @if (CurrentUser.HasRole("Manager") &&
+                   report.FaultStatusName == "Riješeno")
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           OnClick="CloseFaultReport"
+                           Disabled="isClosing">
+                    @(isClosing
+                        ? "Zatvaranje..."
+                        : "Zatvori prijavu")
+                </MudButton>
+            }
+
             @if (CanManage)
             {
                 <MudButton Variant="Variant.Filled"
@@ -684,6 +697,7 @@ else
     private string? assignmentNote;
 
     private bool isAssigning;
+    private bool isClosing;
 
     private bool isLoading = true;
     private string? errorMessage;
@@ -969,6 +983,57 @@ else
                 materialsByIntervention[intervention.Id] =
                     materials;
             }
+        }
+    }
+
+    private async Task CloseFaultReport()
+    {
+        var confirmed =
+            await DialogService.ShowMessageBoxAsync(
+                "Zatvaranje prijave",
+                "Je li završna provjera obavljena i želiš li zatvoriti ovu prijavu?",
+                yesText: "Zatvori",
+                cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isClosing = true;
+
+        try
+        {
+            var response =
+                await Http.PutAsync(
+                    $"api/faultreports/{Id}/close",
+                    null);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Prijavu nije moguće zatvoriti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadProfile();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Prijavu nije moguće zatvoriti: {ex.Message}";
+        }
+        finally
+        {
+            isClosing = false;
         }
     }
 

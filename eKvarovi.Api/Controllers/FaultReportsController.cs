@@ -418,6 +418,84 @@ public class FaultReportsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("{id:int}/close")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+    Roles = "Manager")]
+    public async Task<IActionResult> CloseFaultReport(
+    int id)
+    {
+        var report =
+            await _context.FaultReports
+                .Include(report =>
+                    report.FaultStatus)
+                .FirstOrDefaultAsync(report =>
+                    report.Id == id);
+
+        if (report is null)
+        {
+            return NotFound(
+                "Prijava kvara nije pronađena.");
+        }
+
+        if (report.IsArchived)
+        {
+            return BadRequest(
+                "Arhiviranu prijavu nije moguće zatvoriti.");
+        }
+
+        if (report.FaultStatus?.Name != "Riješeno")
+        {
+            return BadRequest(
+                "Zatvoriti je moguće samo riješenu prijavu.");
+        }
+
+        var completedStatus =
+            await _context.InterventionStatuses
+                .FirstOrDefaultAsync(status =>
+                    status.Name == "Završena");
+
+        if (completedStatus is null)
+        {
+            return BadRequest(
+                "Status završene intervencije nije pronađen.");
+        }
+
+        var hasSuccessfulIntervention =
+            await _context.Interventions
+                .AnyAsync(intervention =>
+                    intervention.WorkAssignment != null &&
+                    intervention.WorkAssignment.FaultReportId == id &&
+                    intervention.InterventionStatusId ==
+                        completedStatus.Id);
+
+        if (!hasSuccessfulIntervention)
+        {
+            return BadRequest(
+                "Prijavu nije moguće zatvoriti bez uspješno završene intervencije.");
+        }
+
+        var closedStatus =
+            await _context.FaultStatuses
+                .FirstOrDefaultAsync(status =>
+                    status.Name == "Zatvoreno");
+
+        if (closedStatus is null)
+        {
+            return BadRequest(
+                "Status Zatvoreno nije pronađen.");
+        }
+
+        report.FaultStatusId =
+            closedStatus.Id;
+
+        report.ClosedAt =
+            DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     private static FaultReportDto ToDto(
         FaultReport report)
     {
