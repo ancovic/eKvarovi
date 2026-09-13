@@ -1,0 +1,224 @@
+﻿@page "/materials/create"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Novi materijal</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Novi materijal
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (CurrentUser.HasRole("Admin"))
+{
+    <EditForm Model="model"
+              OnValidSubmit="Save"
+              FormName="material-create">
+
+        <MudPaper Class="pa-4"
+                  Style="max-width: 700px">
+
+            <MudTextField T="string"
+                          Label="Naziv"
+                          @bind-Value="model.Name"
+                          Required="true"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          Label="Opis"
+                          @bind-Value="model.Description"
+                          Lines="3"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudSelect T="int"
+                       Label="Jedinica mjere"
+                       @bind-Value="model.MaterialUnitId"
+                       Required="true"
+                       Variant="Variant.Outlined"
+                       Class="mb-3">
+
+                @foreach (var unit in units)
+                {
+                    <MudSelectItem T="int"
+                                   Value="@unit.Id">
+                        @unit.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudCheckBox T="bool"
+                         @bind-Value="model.IsActive"
+                         Label="Aktivan"
+                         Class="mb-4" />
+
+            <MudStack Row="true"
+                      Spacing="2">
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isSaving">
+                    @(isSaving ? "Spremanje..." : "Spremi")
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Href="/materials">
+                    Odustani
+                </MudButton>
+
+            </MudStack>
+
+        </MudPaper>
+
+    </EditForm>
+}
+
+@code {
+    private SaveMaterialDto model =
+        new()
+        {
+            IsActive = true
+        };
+
+    private List<LookupDto> units = new();
+
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Admin"))
+        {
+            errorMessage =
+                "Nemaš ovlast za kreiranje materijala.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadMaterialUnits();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadMaterialUnits()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            units =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/materialunits")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Jedinice mjere nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(
+                model.Name))
+        {
+            errorMessage =
+                "Naziv materijala je obavezan.";
+
+            return;
+        }
+
+        if (model.MaterialUnitId <= 0)
+        {
+            errorMessage =
+                "Odaberi jedinicu mjere.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var response =
+                await Http.PostAsJsonAsync(
+                    "api/materials",
+                    model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Materijal nije moguće spremiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                "/materials");
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijal nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

@@ -105,6 +105,18 @@ else
 
     @foreach (var assignment in assignments)
     {
+        var assignmentInterventions =
+                    interventionsByAssignment.TryGetValue(
+                        assignment.Id,
+                        out var items)
+                        ? items
+                        : new List<InterventionDto>();
+
+        var activeIntervention =
+            assignmentInterventions
+                .FirstOrDefault(intervention =>
+                    intervention.FinishedAt is null);
+
         <MudPaper Class="pa-4 mt-4">
 
             <MudText Typo="Typo.h6">
@@ -115,20 +127,6 @@ else
                      Class="mb-3">
                 @assignment.LocationName
             </MudText>
-
-            @{
-                var assignmentInterventions =
-                    interventionsByAssignment.TryGetValue(
-                        assignment.Id,
-                        out var items)
-                        ? items
-                        : new List<InterventionDto>();
-
-                var activeIntervention =
-                    assignmentInterventions
-                        .FirstOrDefault(intervention =>
-                            intervention.FinishedAt is null);
-            }
 
             @if (assignmentInterventions.Count == 0)
             {
@@ -193,7 +191,103 @@ else
             @if (assignment.IsActive &&
                  activeIntervention is not null)
             {
+                var usedMaterials =
+                            materialsByIntervention.TryGetValue(
+                                activeIntervention.Id,
+                                out var interventionMaterials)
+                                ? interventionMaterials
+                                : new List<InterventionMaterialDto>();
+
                 <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.h6"
+                             Class="mb-3">
+                        Utrošeni materijal
+                    </MudText>                    
+
+                    @if (usedMaterials.Count > 0)
+                    {
+                        <MudTable Items="@usedMaterials"
+                                  Dense="true"
+                                  Bordered="true"
+                                  Class="mb-3">
+
+                            <HeaderContent>
+                                <MudTh>Materijal</MudTh>
+                                <MudTh>Količina</MudTh>
+                                <MudTh>Jedinica</MudTh>
+                            </HeaderContent>
+
+                            <RowTemplate>
+                                <MudTd DataLabel="Materijal">
+                                    @context.MaterialName
+                                </MudTd>
+
+                                <MudTd DataLabel="Količina">
+                                    @context.Quantity
+                                </MudTd>
+
+                                <MudTd DataLabel="Jedinica">
+                                    @context.MaterialUnitName
+                                </MudTd>
+                            </RowTemplate>
+
+                            <NoRecordsContent>
+                                <MudText Class="pa-3">
+                                    Nema evidentiranog materijala.
+                                </MudText>
+                            </NoRecordsContent>
+
+                        </MudTable>
+                    }
+
+                    <MudGrid Class="mb-4">
+
+                        <MudItem xs="12" md="6">
+
+                            <MudSelect T="int?"
+                                       Label="Materijal"
+                                       Value="@GetSelectedMaterial(activeIntervention.Id)"
+                                       ValueChanged="@((int? value) => SetSelectedMaterial(activeIntervention.Id, value))"
+                                       Variant="Variant.Outlined">
+
+                                @foreach (var material in availableMaterials)
+                                {
+                                    <MudSelectItem T="int?"
+                                                   Value="@((int?)material.Id)">
+                                        @($"{material.Name} ({material.MaterialUnitName})")
+                                    </MudSelectItem>
+                                }
+
+                            </MudSelect>
+
+                        </MudItem>
+
+                        <MudItem xs="12" md="3">
+
+                            <MudNumericField T="decimal?"
+                                             Label="Količina"
+                                             Value="@GetQuantity(activeIntervention.Id)"
+                                             ValueChanged="@((decimal? value) => SetQuantity(activeIntervention.Id, value))"
+                                             Variant="Variant.Outlined" />
+
+                        </MudItem>
+
+                        <MudItem xs="12" md="3">
+
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => AddMaterial(activeIntervention.Id))"
+                                       Disabled="isSaving"
+                                       Class="mt-2">
+                                Dodaj materijal
+                            </MudButton>
+
+                        </MudItem>
+
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
 
                 <MudText Typo="Typo.h6"
                          Class="mb-3">
@@ -240,6 +334,17 @@ else
         new();
 
     private Dictionary<int, string> workNotes =
+        new();
+
+    private List<MaterialDto> availableMaterials = new();
+
+    private Dictionary<int, List<InterventionMaterialDto>> materialsByIntervention =
+        new();
+
+    private Dictionary<int, int?> selectedMaterialByIntervention =
+        new();
+
+    private Dictionary<int, decimal?> quantityByIntervention =
         new();
 
     private bool isLoading = true;
@@ -290,8 +395,17 @@ else
                     "api/workassignments/mine")
                 ?? new();
 
+            availableMaterials =
+                await Http.GetFromJsonAsync<List<MaterialDto>>(
+                    "api/materials/lookup")
+                ?? new();
+
             interventionsByAssignment.Clear();
             workNotes.Clear();
+
+            materialsByIntervention.Clear();
+            selectedMaterialByIntervention.Clear();
+            quantityByIntervention.Clear();
 
             foreach (var assignment in assignments)
             {
@@ -305,6 +419,14 @@ else
 
                 foreach (var intervention in interventions)
                 {
+                    var materials =
+                        await Http.GetFromJsonAsync<List<InterventionMaterialDto>>(
+                            $"api/interventions/{intervention.Id}/materials")
+                        ?? new();
+
+                    materialsByIntervention[intervention.Id] =
+                        materials;
+
                     if (intervention.FinishedAt is null)
                     {
                         workNotes[intervention.Id] =
@@ -451,5 +573,124 @@ else
     {
         workNotes[interventionId] =
             value;
+    }
+
+    private int? GetSelectedMaterial(
+    int interventionId)
+    {
+        return selectedMaterialByIntervention.TryGetValue(
+            interventionId,
+            out var value)
+            ? value
+            : null;
+    }
+
+    private void SetSelectedMaterial(
+        int interventionId,
+        int? value)
+    {
+        selectedMaterialByIntervention[interventionId] =
+            value;
+    }
+
+    private decimal? GetQuantity(
+        int interventionId)
+    {
+        return quantityByIntervention.TryGetValue(
+            interventionId,
+            out var value)
+            ? value
+            : null;
+    }
+
+    private void SetQuantity(
+        int interventionId,
+        decimal? value)
+    {
+        quantityByIntervention[interventionId] =
+            value;
+    }
+
+    private async Task AddMaterial(
+    int interventionId)
+    {
+        errorMessage = null;
+
+        var materialId =
+            GetSelectedMaterial(
+                interventionId);
+
+        var quantity =
+            GetQuantity(
+                interventionId);
+
+        if (!materialId.HasValue ||
+            materialId.Value <= 0)
+        {
+            errorMessage =
+                "Odaberi materijal.";
+
+            return;
+        }
+
+        if (!quantity.HasValue ||
+            quantity.Value <= 0)
+        {
+            errorMessage =
+                "Količina materijala mora biti veća od nule.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var request =
+                new SaveInterventionMaterialDto
+                {
+                    MaterialId =
+                        materialId.Value,
+
+                    Quantity =
+                        quantity.Value
+                };
+
+            var response =
+                await Http.PostAsJsonAsync(
+                    $"api/interventions/{interventionId}/materials",
+                    request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Materijal nije moguće evidentirati."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            selectedMaterialByIntervention[interventionId] =
+                null;
+
+            quantityByIntervention[interventionId] =
+                null;
+
+            await LoadAssignments();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijal nije moguće evidentirati: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
     }
 }

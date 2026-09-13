@@ -1,0 +1,247 @@
+﻿@page "/materials/edit/{Id:int}"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Uredi materijal</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Uredi materijal
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (CurrentUser.HasRole("Admin"))
+{
+    <EditForm Model="model"
+              OnValidSubmit="Save"
+              FormName="material-edit">
+
+        <MudPaper Class="pa-4"
+                  Style="max-width: 700px">
+
+            <MudTextField T="string"
+                          Label="Naziv"
+                          @bind-Value="model.Name"
+                          Required="true"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          Label="Opis"
+                          @bind-Value="model.Description"
+                          Lines="3"
+                          Variant="Variant.Outlined"
+                          Class="mb-3" />
+
+            <MudSelect T="int"
+                       Label="Jedinica mjere"
+                       @bind-Value="model.MaterialUnitId"
+                       Required="true"
+                       Variant="Variant.Outlined"
+                       Class="mb-3">
+
+                @foreach (var unit in units)
+                {
+                    <MudSelectItem T="int"
+                                   Value="@unit.Id">
+                        @unit.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudCheckBox T="bool"
+                         @bind-Value="model.IsActive"
+                         Label="Aktivan"
+                         Class="mb-4" />
+
+            <MudStack Row="true"
+                      Spacing="2">
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isSaving">
+                    @(isSaving ? "Spremanje..." : "Spremi")
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Href="/materials">
+                    Odustani
+                </MudButton>
+
+            </MudStack>
+
+        </MudPaper>
+
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private SaveMaterialDto model = new();
+    private List<LookupDto> units = new();
+
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Admin"))
+        {
+            errorMessage =
+                "Nemaš ovlast za uređivanje materijala.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadData();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            units =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/materialunits")
+                ?? new();
+
+            var material =
+                await Http.GetFromJsonAsync<MaterialDto>(
+                    $"api/materials/{Id}");
+
+            if (material is null)
+            {
+                errorMessage =
+                    "Materijal nije pronađen.";
+
+                return;
+            }
+
+            model =
+                new SaveMaterialDto
+                {
+                    Name =
+                        material.Name,
+
+                    Description =
+                        material.Description,
+
+                    IsActive =
+                        material.IsActive,
+
+                    MaterialUnitId =
+                        material.MaterialUnitId
+                };
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijal nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(
+                model.Name))
+        {
+            errorMessage =
+                "Naziv materijala je obavezan.";
+
+            return;
+        }
+
+        if (model.MaterialUnitId <= 0)
+        {
+            errorMessage =
+                "Odaberi jedinicu mjere.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var response =
+                await Http.PutAsJsonAsync(
+                    $"api/materials/{Id}",
+                    model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Materijal nije moguće spremiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                "/materials");
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijal nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

@@ -1,0 +1,263 @@
+﻿@page "/materials"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Materijali</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Materijali
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4">
+
+    <MudGrid>
+
+        <MudItem xs="12" md="8">
+            <MudTextField T="string"
+                          @bind-Value="searchString"
+                          Label="Pretraži"
+                          Variant="Variant.Outlined"
+                          Immediate="true"
+                          Placeholder="Naziv ili opis materijala" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="bool?"
+                       Label="Aktivnost"
+                       @bind-Value="selectedIsActive"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                <MudSelectItem T="bool?"
+                               Value="@((bool?)true)">
+                    Aktivni
+                </MudSelectItem>
+
+                <MudSelectItem T="bool?"
+                               Value="@((bool?)false)">
+                    Neaktivni
+                </MudSelectItem>
+
+            </MudSelect>
+        </MudItem>
+
+    </MudGrid>
+
+    <MudStack Row="true"
+              Spacing="2"
+              Class="mt-4">
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="LoadMaterials">
+            Primijeni filtere
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Secondary"
+                   OnClick="ResetFilters">
+            Reset filtera
+        </MudButton>
+
+        @if (CurrentUser.HasRole("Admin"))
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Success"
+                       Href="/materials/create">
+                Novi materijal
+            </MudButton>
+        }
+
+    </MudStack>
+
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else
+{
+    <MudTable Items="@FilteredMaterials"
+              Hover="true"
+              Striped="true"
+              Bordered="true"
+              Dense="true">
+
+        <HeaderContent>
+            <MudTh>Naziv</MudTh>
+            <MudTh>Opis</MudTh>
+            <MudTh>Jedinica mjere</MudTh>
+            <MudTh>Aktivan</MudTh>
+
+            @if (CurrentUser.HasRole("Admin"))
+            {
+                <MudTh>Uredi</MudTh>
+            }
+        </HeaderContent>
+
+        <RowTemplate>
+
+            <MudTd DataLabel="Naziv">
+                @context.Name
+            </MudTd>
+
+            <MudTd DataLabel="Opis">
+                @(context.Description ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Jedinica mjere">
+                @context.MaterialUnitName
+            </MudTd>
+
+            <MudTd DataLabel="Aktivan">
+                @(context.IsActive ? "Da" : "Ne")
+            </MudTd>
+
+            @if (CurrentUser.HasRole("Admin"))
+            {
+                <MudTd DataLabel="Uredi">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   Color="Color.Primary"
+                                   Href="@($"/materials/edit/{context.Id}")" />
+                </MudTd>
+            }
+
+        </RowTemplate>
+
+        <NoRecordsContent>
+            <MudText Class="pa-4">
+                Nema materijala za zadane kriterije.
+            </MudText>
+        </NoRecordsContent>
+
+    </MudTable>
+}
+
+@code {
+    private List<MaterialDto> materials = new();
+
+    private string searchString = string.Empty;
+    private bool? selectedIsActive;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private IEnumerable<MaterialDto> FilteredMaterials =>
+        materials.Where(MaterialMatchesSearch);
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasAnyRole(
+                "Admin",
+                "Manager"))
+        {
+            errorMessage =
+                "Nemaš ovlast za pregled materijala.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadMaterials();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadMaterials()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var url =
+                "api/materials";
+
+            if (selectedIsActive.HasValue)
+            {
+                url +=
+                    $"?isActive={selectedIsActive.Value.ToString().ToLowerInvariant()}";
+            }
+
+            materials =
+                await Http.GetFromJsonAsync<List<MaterialDto>>(
+                    url)
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijale nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        searchString = string.Empty;
+        selectedIsActive = null;
+
+        await LoadMaterials();
+    }
+
+    private bool MaterialMatchesSearch(
+        MaterialDto material)
+    {
+        if (string.IsNullOrWhiteSpace(
+                searchString))
+        {
+            return true;
+        }
+
+        var value =
+            searchString.Trim();
+
+        return
+            material.Name.Contains(
+                value,
+                StringComparison.OrdinalIgnoreCase) ||
+            (material.Description?.Contains(
+                value,
+                StringComparison.OrdinalIgnoreCase)
+                ?? false) ||
+            material.MaterialUnitName.Contains(
+                value,
+                StringComparison.OrdinalIgnoreCase);
+    }
+}
