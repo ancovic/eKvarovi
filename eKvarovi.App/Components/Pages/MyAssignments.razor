@@ -68,15 +68,11 @@ else
             </MudTd>
 
             <MudTd DataLabel="Nalog">
-
                 <MudChip T="string"
                          Size="Size.Small"
                          Color="@(context.IsActive ? Color.Success : Color.Default)">
-                    @(context.IsActive
-                        ? "Aktivan"
-                        : "Završen")
+                    @(context.IsActive ? "Aktivan" : "Završen")
                 </MudChip>
-
             </MudTd>
 
             <MudTd DataLabel="Dodijeljeno">
@@ -92,12 +88,9 @@ else
             </MudTd>
 
             <MudTd DataLabel="Detalji">
-
                 <MudIconButton Icon="@Icons.Material.Filled.Visibility"
                                Color="Color.Primary"
-                               Href="@($"/faultreports/{context.FaultReportId}")"
-                               Title="Otvori prijavu" />
-
+                               Href="@($"/faultreports/{context.FaultReportId}")" />
             </MudTd>
 
         </RowTemplate>
@@ -109,12 +102,149 @@ else
         </NoRecordsContent>
 
     </MudTable>
+
+    @foreach (var assignment in assignments)
+    {
+        <MudPaper Class="pa-4 mt-4">
+
+            <MudText Typo="Typo.h6">
+                @assignment.FaultReportTitle
+            </MudText>
+
+            <MudText Typo="Typo.body2"
+                     Class="mb-3">
+                @assignment.LocationName
+            </MudText>
+
+            @{
+                var assignmentInterventions =
+                    interventionsByAssignment.TryGetValue(
+                        assignment.Id,
+                        out var items)
+                        ? items
+                        : new List<InterventionDto>();
+
+                var activeIntervention =
+                    assignmentInterventions
+                        .FirstOrDefault(intervention =>
+                            intervention.FinishedAt is null);
+            }
+
+            @if (assignmentInterventions.Count == 0)
+            {
+                <MudText Class="mb-3">
+                    Još nema intervencija.
+                </MudText>
+            }
+            else
+            {
+                <MudTable Items="@assignmentInterventions"
+                          Dense="true"
+                          Bordered="true"
+                          Class="mb-3">
+
+                    <HeaderContent>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Početak</MudTh>
+                        <MudTh>Završetak</MudTh>
+                        <MudTh>Bilješka</MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+
+                        <MudTd DataLabel="Status">
+                            @context.InterventionStatusName
+                        </MudTd>
+
+                        <MudTd DataLabel="Početak">
+                            @(context.StartedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+                        </MudTd>
+
+                        <MudTd DataLabel="Završetak">
+                            @(context.FinishedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+                        </MudTd>
+
+                        <MudTd DataLabel="Bilješka">
+                            @(context.WorkNote ?? "-")
+                        </MudTd>
+
+                    </RowTemplate>
+
+                    <NoRecordsContent>
+                        <MudText Class="pa-3">
+                            Nema intervencija.
+                        </MudText>
+                    </NoRecordsContent>
+
+                </MudTable>
+            }
+
+            @if (assignment.IsActive &&
+                 activeIntervention is null)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@(() => StartIntervention(assignment.Id))"
+                           Disabled="isSaving">
+                    Pokreni intervenciju
+                </MudButton>
+            }
+
+            @if (assignment.IsActive &&
+                 activeIntervention is not null)
+            {
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.h6"
+                         Class="mb-3">
+                    Završi intervenciju
+                </MudText>
+
+                <MudTextField T="string"
+                              Label="Bilješka rada"
+                              Value="@GetWorkNote(activeIntervention.Id)"
+                              ValueChanged="@((string value) => SetWorkNote(activeIntervention.Id, value))"
+                              Lines="4"
+                              Required="true"
+                              Variant="Variant.Outlined"
+                              Class="mb-3" />
+
+                <MudStack Row="true"
+                          Spacing="2">
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="@(() => FinishIntervention(activeIntervention.Id, true))"
+                               Disabled="isSaving">
+                        Uspješno završena
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Error"
+                               OnClick="@(() => FinishIntervention(activeIntervention.Id, false))"
+                               Disabled="isSaving">
+                        Neuspješna
+                    </MudButton>
+
+                </MudStack>
+            }
+
+        </MudPaper>
+    }
 }
 
 @code {
     private List<WorkAssignmentDto> assignments = new();
 
+    private Dictionary<int, List<InterventionDto>> interventionsByAssignment =
+        new();
+
+    private Dictionary<int, string> workNotes =
+        new();
+
     private bool isLoading = true;
+    private bool isSaving;
+
     private string? errorMessage;
 
     protected override async Task OnAfterRenderAsync(
@@ -159,6 +289,29 @@ else
                 await Http.GetFromJsonAsync<List<WorkAssignmentDto>>(
                     "api/workassignments/mine")
                 ?? new();
+
+            interventionsByAssignment.Clear();
+            workNotes.Clear();
+
+            foreach (var assignment in assignments)
+            {
+                var interventions =
+                    await Http.GetFromJsonAsync<List<InterventionDto>>(
+                        $"api/interventions/workassignment/{assignment.Id}")
+                    ?? new();
+
+                interventionsByAssignment[assignment.Id] =
+                    interventions;
+
+                foreach (var intervention in interventions)
+                {
+                    if (intervention.FinishedAt is null)
+                    {
+                        workNotes[intervention.Id] =
+                            string.Empty;
+                    }
+                }
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -169,5 +322,134 @@ else
         {
             isLoading = false;
         }
+    }
+
+    private async Task StartIntervention(
+        int workAssignmentId)
+    {
+        errorMessage = null;
+        isSaving = true;
+
+        try
+        {
+            var request =
+                new CreateInterventionDto
+                {
+                    WorkAssignmentId =
+                        workAssignmentId
+                };
+
+            var response =
+                await Http.PostAsJsonAsync(
+                    "api/interventions",
+                    request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Intervenciju nije moguće pokrenuti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadAssignments();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Intervenciju nije moguće pokrenuti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task FinishIntervention(
+        int interventionId,
+        bool isSuccessful)
+    {
+        errorMessage = null;
+
+        var workNote =
+            GetWorkNote(interventionId);
+
+        if (string.IsNullOrWhiteSpace(
+                workNote))
+        {
+            errorMessage =
+                "Bilješka rada je obavezna.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var request =
+                new FinishInterventionDto
+                {
+                    WorkNote =
+                        workNote.Trim(),
+
+                    IsSuccessful =
+                        isSuccessful
+                };
+
+            var response =
+                await Http.PutAsJsonAsync(
+                    $"api/interventions/{interventionId}/finish",
+                    request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Intervenciju nije moguće završiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadAssignments();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Intervenciju nije moguće završiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private string GetWorkNote(
+        int interventionId)
+    {
+        return workNotes.TryGetValue(
+            interventionId,
+            out var value)
+            ? value
+            : string.Empty;
+    }
+
+    private void SetWorkNote(
+        int interventionId,
+        string value)
+    {
+        workNotes[interventionId] =
+            value;
     }
 }

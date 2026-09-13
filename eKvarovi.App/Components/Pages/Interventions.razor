@@ -1,0 +1,383 @@
+﻿@page "/interventions"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Intervencije</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">
+    Intervencije
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4">
+
+    <MudGrid>
+
+        <MudItem xs="12" md="4">
+            <MudTextField T="string"
+                          @bind-Value="searchString"
+                          Label="Pretraži"
+                          Variant="Variant.Outlined"
+                          Immediate="true"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Status"
+                       @bind-Value="selectedStatusId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var status in statuses)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)status.Id)">
+                        @status.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="int?"
+                       Label="Izvršitelj"
+                       @bind-Value="selectedTechnicianId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var technician in technicians)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)technician.Id)">
+                        @technician.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudDatePicker Label="Od datuma"
+                           @bind-Date="dateFrom"
+                           Clearable="true"
+                           Variant="Variant.Outlined" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudDatePicker Label="Do datuma"
+                           @bind-Date="dateTo"
+                           Clearable="true"
+                           Variant="Variant.Outlined" />
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudSelect T="string"
+                       Label="Sortiranje"
+                       @bind-Value="sortBy"
+                       Variant="Variant.Outlined">
+
+                <MudSelectItem Value="@("createdat")">
+                    Datum kreiranja
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("report")">
+                    Prijava
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("technician")">
+                    Izvršitelj
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("status")">
+                    Status
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("startedat")">
+                    Početak
+                </MudSelectItem>
+
+                <MudSelectItem Value="@("finishedat")">
+                    Završetak
+                </MudSelectItem>
+
+            </MudSelect>
+        </MudItem>
+
+    </MudGrid>
+
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="LoadInterventions">
+            Primijeni filtere
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Secondary"
+                   OnClick="ResetFilters">
+            Reset filtera
+        </MudButton>
+
+        <MudSwitch T="bool"
+                   @bind-Value="sortDescending"
+                   Label="Silazno" />
+
+    </MudStack>
+
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else
+{
+    <MudTable Items="@interventions"
+              Hover="true"
+              Striped="true"
+              Bordered="true"
+              Dense="true">
+
+        <HeaderContent>
+            <MudTh>Prijava</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Izvršitelj</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Početak</MudTh>
+            <MudTh>Završetak</MudTh>
+            <MudTh>Bilješka</MudTh>
+            <MudTh>Detalji</MudTh>
+        </HeaderContent>
+
+        <RowTemplate>
+
+            <MudTd DataLabel="Prijava">
+                @context.FaultReportTitle
+            </MudTd>
+
+            <MudTd DataLabel="Lokacija">
+                @context.LocationName
+            </MudTd>
+
+            <MudTd DataLabel="Izvršitelj">
+                @context.TechnicianName
+            </MudTd>
+
+            <MudTd DataLabel="Status">
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="@GetStatusColor(context.InterventionStatusName)">
+                    @context.InterventionStatusName
+                </MudChip>
+            </MudTd>
+
+            <MudTd DataLabel="Početak">
+                @(context.StartedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Završetak">
+                @(context.FinishedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Bilješka">
+                @(context.WorkNote ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Detalji">
+
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                               Color="Color.Primary"
+                               Href="@($"/faultreports/{context.FaultReportId}")"
+                               Title="Otvori prijavu" />
+
+            </MudTd>
+
+        </RowTemplate>
+
+        <NoRecordsContent>
+            <MudText Class="pa-4">
+                Nema intervencija za zadane kriterije.
+            </MudText>
+        </NoRecordsContent>
+
+    </MudTable>
+}
+
+@code {
+    private List<InterventionDto> interventions = new();
+    private List<LookupDto> statuses = new();
+    private List<LookupDto> technicians = new();
+
+    private string searchString = string.Empty;
+
+    private int? selectedStatusId;
+    private int? selectedTechnicianId;
+
+    private DateTime? dateFrom;
+    private DateTime? dateTo;
+
+    private string sortBy = "createdat";
+    private bool sortDescending = true;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasAnyRole(
+                "Admin",
+                "Manager"))
+        {
+            errorMessage =
+                "Nemaš ovlast za pregled intervencija.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadLookups();
+        await LoadInterventions();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadLookups()
+    {
+        statuses =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/interventionstatuses")
+            ?? new();
+
+        technicians =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/technicians/lookup")
+            ?? new();
+    }
+
+    private async Task LoadInterventions()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var query = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(searchString))
+            {
+                query.Add(
+                    $"search={Uri.EscapeDataString(searchString.Trim())}");
+            }
+
+            if (selectedStatusId.HasValue)
+            {
+                query.Add(
+                    $"statusId={selectedStatusId.Value}");
+            }
+
+            if (selectedTechnicianId.HasValue)
+            {
+                query.Add(
+                    $"technicianId={selectedTechnicianId.Value}");
+            }
+
+            if (dateFrom.HasValue)
+            {
+                query.Add(
+                    $"dateFrom={dateFrom.Value:yyyy-MM-dd}");
+            }
+
+            if (dateTo.HasValue)
+            {
+                query.Add(
+                    $"dateTo={dateTo.Value:yyyy-MM-dd}");
+            }
+
+            query.Add(
+                $"sortBy={Uri.EscapeDataString(sortBy)}");
+
+            query.Add(
+                $"sortDescending={sortDescending.ToString().ToLowerInvariant()}");
+
+            var url =
+                "api/interventions?" +
+                string.Join("&", query);
+
+            interventions =
+                await Http.GetFromJsonAsync<List<InterventionDto>>(
+                    url)
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Intervencije nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        searchString = string.Empty;
+
+        selectedStatusId = null;
+        selectedTechnicianId = null;
+
+        dateFrom = null;
+        dateTo = null;
+
+        sortBy = "createdat";
+        sortDescending = true;
+
+        await LoadInterventions();
+    }
+
+    private static Color GetStatusColor(
+        string status)
+    {
+        return status switch
+        {
+            "Planirana" => Color.Info,
+            "U tijeku" => Color.Warning,
+            "Završena" => Color.Success,
+            "Neuspješna" => Color.Error,
+            _ => Color.Default
+        };
+    }
+}

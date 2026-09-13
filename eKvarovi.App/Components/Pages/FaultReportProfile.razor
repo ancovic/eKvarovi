@@ -472,9 +472,25 @@ else
                 CurrentUser.HasRole("Reporter") ||
                 CurrentUser.HasRole("Technician"))
             {
-                latestAssignment =
-                    await Http.GetFromJsonAsync<WorkAssignmentDto?>(
+                var assignmentResponse =
+                    await Http.GetAsync(
                         $"api/workassignments/faultreport/{Id}/latest");
+
+                if (assignmentResponse.StatusCode ==
+                    System.Net.HttpStatusCode.NoContent)
+                {
+                    latestAssignment = null;
+                }
+                else if (assignmentResponse.IsSuccessStatusCode)
+                {
+                    latestAssignment =
+                        await assignmentResponse.Content
+                            .ReadFromJsonAsync<WorkAssignmentDto>();
+                }
+                else
+                {
+                    latestAssignment = null;
+                }
             }
 
             if (CanManage)

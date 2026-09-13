@@ -262,7 +262,7 @@ public class WorkAssignmentsController : ControllerBase
 
         if (assignment is null)
         {
-            return Ok(null);
+            return NoContent();
         }
 
         return Ok(ToDto(assignment));
