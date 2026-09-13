@@ -64,6 +64,11 @@
                         Icon="@Icons.Material.Filled.Engineering">
                 Izvršitelji
             </MudNavLink>
+
+            <MudNavLink Href="/users"
+                        Icon="@Icons.Material.Filled.ManageAccounts">
+                Korisnici
+            </MudNavLink>
         }
 
         @if (CurrentUser.HasRole("Reporter"))

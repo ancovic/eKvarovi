@@ -8,6 +8,7 @@
 @inject HttpClient Http
 @inject CurrentUserService CurrentUser
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 
 <PageTitle>Materijali</PageTitle>
 
@@ -109,7 +110,7 @@ else
 
             @if (CurrentUser.HasRole("Admin"))
             {
-                <MudTh>Uredi</MudTh>
+                <MudTh>Uredi ili obriši</MudTh>
             }
         </HeaderContent>
 
@@ -138,6 +139,10 @@ else
                                    Color="Color.Primary"
                                    Href="@($"/materials/edit/{context.Id}")" />
                 </MudTd>
+
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Color="Color.Error"
+                               OnClick="@(() => DeleteMaterial(context.Id))" />
             }
 
         </RowTemplate>
@@ -225,6 +230,52 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task DeleteMaterial(
+    int id)
+    {
+        var confirmed =
+            await DialogService.ShowMessageBoxAsync(
+                "Brisanje materijala",
+                "Želiš li sigurno izbrisati ovaj materijal?",
+                yesText: "Izbriši",
+                cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        errorMessage = null;
+
+        try
+        {
+            var response =
+                await Http.DeleteAsync(
+                    $"api/materials/{id}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Materijal nije moguće izbrisati."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadMaterials();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Materijal nije moguće izbrisati: {ex.Message}";
         }
     }
 

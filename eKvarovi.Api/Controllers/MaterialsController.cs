@@ -241,6 +241,42 @@ public class MaterialsController : ControllerBase
         return NoContent();
     }
 
+    [HttpDelete("{id:int}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(
+    Policy = AuthorizationPolicies.AdminOnly)]
+    public async Task<IActionResult> DeleteMaterial(
+    int id)
+    {
+        var material =
+            await _context.Materials
+                .FirstOrDefaultAsync(material =>
+                    material.Id == id);
+
+        if (material is null)
+        {
+            return NotFound(
+                "Materijal nije pronađen.");
+        }
+
+        var isUsed =
+            await _context.InterventionMaterials
+                .AnyAsync(item =>
+                    item.MaterialId == id);
+
+        if (isUsed)
+        {
+            return BadRequest(
+                "Materijal koji je korišten u intervenciji nije moguće izbrisati. Deaktiviraj ga.");
+        }
+
+        _context.Materials.Remove(
+            material);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     private static MaterialDto ToDto(
         Material material)
     {

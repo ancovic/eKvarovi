@@ -1,7 +1,286 @@
 ﻿@page "/"
+@rendermode InteractiveServer
 
-<PageTitle>Home</PageTitle>
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
 
-<h1>Hello, world!</h1>
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
 
-Welcome to your new app.
+<PageTitle>Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Dashboard
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (!CurrentUser.IsLoggedIn)
+{
+    <MudAlert Severity="Severity.Info">
+        Prijavi se za pregled dashboarda.
+    </MudAlert>
+}
+else if (dashboard is not null)
+{
+    @if (CurrentUser.HasAnyRole("Admin", "Manager"))
+    {
+        <MudText Typo="Typo.h5"
+                 Class="mb-4">
+            Operativni pregled kvarova
+        </MudText>
+
+        <MudGrid Class="mb-4">
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Otvorene prijave
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @dashboard.OpenFaultReportsCount
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Kritične prijave
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @dashboard.CriticalFaultReportsCount
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Zakašnjele prijave
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @dashboard.OverdueFaultReportsCount
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Bez izvršitelja
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @dashboard.UnassignedFaultReportsCount
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Aktivne intervencije
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @dashboard.ActiveInterventionsCount
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle2">
+                        Prosječno vrijeme rješavanja
+                    </MudText>
+
+                    <MudText Typo="Typo.h4">
+                        @FormatAverageTime(
+                            dashboard.AverageResolutionHours)
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+        </MudGrid>
+
+        <MudPaper Class="pa-4 mb-4">
+
+            <MudText Typo="Typo.h5"
+                     Class="mb-3">
+                Zadnjih pet prijava
+            </MudText>
+
+            <MudTable T="DashboardFaultReportDto"
+                      Items="@dashboard.LatestFaultReports"
+                      Hover="true"
+                      Striped="true"
+                      Bordered="true"
+                      Dense="true">
+
+                <HeaderContent>
+                    <MudTh>Prijava</MudTh>
+                    <MudTh>Lokacija</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Datum</MudTh>
+                    <MudTh>Detalji</MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+
+                    <MudTd DataLabel="Prijava">
+                        @context.Title
+                    </MudTd>
+
+                    <MudTd DataLabel="Lokacija">
+                        @context.LocationName
+                    </MudTd>
+
+                    <MudTd DataLabel="Status">
+                        @context.FaultStatusName
+                    </MudTd>
+
+                    <MudTd DataLabel="Datum">
+                        @context.CreatedAt.ToString(
+                            "dd.MM.yyyy. HH:mm")
+                    </MudTd>
+
+                    <MudTd DataLabel="Detalji">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                       Color="Color.Primary"
+                                       Href="@($"/faultreports/{context.Id}")" />
+                    </MudTd>
+
+                </RowTemplate>
+
+                <NoRecordsContent>
+                    <MudText Class="pa-3">
+                        Nema prijava za prikaz.
+                    </MudText>
+                </NoRecordsContent>
+
+            </MudTable>
+
+        </MudPaper>
+    }
+
+    @if (CurrentUser.HasRole("Reporter") &&
+         dashboard.MyFaultReportsCount.HasValue)
+    {
+        <MudPaper Class="pa-4 mb-4">
+
+            <MudText Typo="Typo.h6">
+                Moje prijave kvarova
+            </MudText>
+
+            <MudText Typo="Typo.h4">
+                @dashboard.MyFaultReportsCount
+            </MudText>
+
+            <MudButton Variant="Variant.Outlined"
+                       Href="/myreports"
+                       Class="mt-2">
+                Otvori moje prijave
+            </MudButton>
+
+        </MudPaper>
+    }
+
+    @if (CurrentUser.HasRole("Technician") &&
+         dashboard.MyWorkAssignmentsCount.HasValue)
+    {
+        <MudPaper Class="pa-4 mb-4">
+
+            <MudText Typo="Typo.h6">
+                Moji radni nalozi
+            </MudText>
+
+            <MudText Typo="Typo.h4">
+                @dashboard.MyWorkAssignmentsCount
+            </MudText>
+
+            <MudButton Variant="Variant.Outlined"
+                       Href="/myassignments"
+                       Class="mt-2">
+                Otvori moje naloge
+            </MudButton>
+
+        </MudPaper>
+    }
+}
+
+@code {
+    private DashboardDto? dashboard;
+
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (CurrentUser.IsLoggedIn)
+        {
+            await LoadDashboard();
+        }
+        else
+        {
+            isLoading = false;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LoadDashboard()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            dashboard =
+                await Http.GetFromJsonAsync<DashboardDto>(
+                    "api/dashboard");
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Dashboard nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string FormatAverageTime(
+        double? hours)
+    {
+        return hours.HasValue
+            ? $"{hours.Value:0.0} h"
+            : "-";
+    }
+}

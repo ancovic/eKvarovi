@@ -1,0 +1,227 @@
+Table LocationTypes {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table Locations {
+  Id int [pk, increment]
+  Name varchar [not null]
+  Address varchar [not null]
+  City varchar
+  IsActive boolean [not null, default: true]
+
+  LocationTypeId int [not null]
+}
+
+Table Employees {
+  Id int [pk, increment]
+  FirstName varchar [not null]
+  LastName varchar [not null]
+  Email varchar [not null]
+  Phone varchar
+  IsActive boolean [not null, default: true]
+
+  LocationId int [not null]
+}
+
+Table Technicians {
+  Id int [pk, increment]
+  FirstName varchar [not null]
+  LastName varchar [not null]
+  Email varchar [not null]
+  Phone varchar
+  Specialization varchar
+  IsActive boolean [not null, default: true]
+}
+
+Table FaultTypes {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table FaultPriorities {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table FaultStatuses {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table FaultReports {
+  Id int [pk, increment]
+
+  Title varchar [not null]
+  Description text [not null]
+
+  CreatedAt datetime [not null]
+  DueDate datetime
+  ResolvedAt datetime
+  ClosedAt datetime
+
+  IsArchived boolean [not null, default: false]
+  ArchivedAt datetime
+
+  LocationId int [not null]
+  ReporterId int [not null]
+  FaultStatusId int [not null]
+
+  FaultTypeId int
+  FaultPriorityId int
+}
+
+Table WorkAssignments {
+  Id int [pk, increment]
+
+  FaultReportId int [not null]
+  TechnicianId int [not null]
+
+  AssignedAt datetime [not null]
+  EndedAt datetime
+  IsActive boolean [not null, default: true]
+
+  Note text
+
+  Note: 'SQLite partial unique index osigurava najvise jednu aktivnu dodjelu po prijavi: UNIQUE FaultReportId WHERE IsActive = 1.'
+}
+
+Table InterventionStatuses {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table Interventions {
+  Id int [pk, increment]
+
+  WorkAssignmentId int [not null]
+  InterventionStatusId int [not null]
+
+  StartedAt datetime
+  FinishedAt datetime
+  WorkNote text
+
+  CreatedAt datetime [not null]
+}
+
+Table MaterialUnits {
+  Id int [pk, increment]
+  Name varchar [not null]
+}
+
+Table Materials {
+  Id int [pk, increment]
+
+  Name varchar [not null]
+  Description text
+  IsActive boolean [not null, default: true]
+
+  MaterialUnitId int [not null]
+}
+
+Table InterventionMaterials {
+  InterventionId int [not null]
+  MaterialId int [not null]
+
+  Quantity decimal [not null]
+
+  indexes {
+    (InterventionId, MaterialId) [pk]
+  }
+}
+
+Table FaultMedia {
+  Id int [pk, increment]
+
+  FaultReportId int [not null]
+  InterventionId int
+
+  OriginalFileName varchar [not null]
+  StoredFileName varchar [not null]
+  ContentType varchar [not null]
+
+  FileSize long [not null]
+  AttachmentPurpose int [not null]
+
+  UploadedAt datetime [not null]
+}
+
+Table AppUsers {
+  Id int [pk, increment]
+
+  Email varchar [not null, unique]
+  DisplayName varchar [not null]
+  PasswordHash varchar [not null]
+
+  IsActive boolean [not null, default: true]
+
+  EmployeeId int [unique]
+  TechnicianId int [unique]
+}
+
+Table AppRoles {
+  Id int [pk, increment]
+
+  Name varchar [not null, unique]
+  DisplayName varchar [not null]
+}
+
+Table AppUserRoles {
+  AppUserId int [not null]
+  AppRoleId int [not null]
+
+  indexes {
+    (AppUserId, AppRoleId) [pk]
+  }
+}
+
+
+// LOCATION
+
+Ref: Locations.LocationTypeId > LocationTypes.Id
+Ref: Employees.LocationId > Locations.Id
+
+
+// FAULT REPORT
+
+Ref: FaultReports.LocationId > Locations.Id
+Ref: FaultReports.ReporterId > Employees.Id
+Ref: FaultReports.FaultStatusId > FaultStatuses.Id
+
+Ref: FaultReports.FaultTypeId >? FaultTypes.Id
+Ref: FaultReports.FaultPriorityId >? FaultPriorities.Id
+
+
+// WORK ASSIGNMENT
+
+Ref: WorkAssignments.FaultReportId > FaultReports.Id
+Ref: WorkAssignments.TechnicianId > Technicians.Id
+
+
+// INTERVENTION
+
+Ref: Interventions.WorkAssignmentId > WorkAssignments.Id
+Ref: Interventions.InterventionStatusId > InterventionStatuses.Id
+
+
+// MATERIALS
+
+Ref: Materials.MaterialUnitId > MaterialUnits.Id
+
+Ref: InterventionMaterials.InterventionId > Interventions.Id
+Ref: InterventionMaterials.MaterialId > Materials.Id
+
+
+// MEDIA
+
+Ref: FaultMedia.FaultReportId > FaultReports.Id
+Ref: FaultMedia.InterventionId >? Interventions.Id
+
+
+// USERS
+
+Ref: Employees.Id ?-? AppUsers.EmployeeId
+Ref: Technicians.Id ?-? AppUsers.TechnicianId
+
+Ref: AppUserRoles.AppUserId > AppUsers.Id
+Ref: AppUserRoles.AppRoleId > AppRoles.Id
