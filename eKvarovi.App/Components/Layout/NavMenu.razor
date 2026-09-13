@@ -34,6 +34,10 @@
                         Icon="@Icons.Material.Filled.ReportProblem">
                 Prijave kvarova
             </MudNavLink>
+            <MudNavLink Href="/assignments"
+                        Icon="@Icons.Material.Filled.Assignment">
+                Radni nalozi
+            </MudNavLink>
         }
 
         @if (CurrentUser.HasRole("Admin"))
@@ -64,6 +68,13 @@
             <MudNavLink Href="/myreports"
                         Icon="@Icons.Material.Filled.AssignmentInd">
                 Moje prijave
+            </MudNavLink>
+        }
+        @if (CurrentUser.HasRole("Technician"))
+        {
+            <MudNavLink Href="/myassignments"
+                        Icon="@Icons.Material.Filled.Engineering">
+                Moji radni nalozi
             </MudNavLink>
         }
 

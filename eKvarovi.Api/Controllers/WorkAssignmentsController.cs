@@ -177,6 +177,97 @@ public class WorkAssignmentsController : ControllerBase
         return Forbid();
     }
 
+    [HttpGet("faultreport/{faultReportId:int}/latest")]
+    [Authorize]
+    public async Task<ActionResult<WorkAssignmentDto?>> GetLatestForFaultReport(
+    int faultReportId)
+    {
+        var report =
+            await _context.FaultReports
+                .FirstOrDefaultAsync(
+                    report =>
+                        report.Id == faultReportId);
+
+        if (report is null)
+        {
+            return NotFound();
+        }
+
+        var query =
+            _context.WorkAssignments
+                .Include(item =>
+                    item.FaultReport)
+                    .ThenInclude(report =>
+                        report!.Location)
+                .Include(item =>
+                    item.FaultReport)
+                    .ThenInclude(report =>
+                        report!.FaultStatus)
+                .Include(item =>
+                    item.Technician)
+                .Where(item =>
+                    item.FaultReportId ==
+                        faultReportId)
+                .AsQueryable();
+
+        if (User.IsInRole("Admin") ||
+            User.IsInRole("Manager"))
+        {
+            // Manager i Admin vide zadnju dodjelu prijave.
+        }
+        else if (User.IsInRole("Reporter"))
+        {
+            var employeeIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.EmployeeId);
+
+            if (!int.TryParse(
+                    employeeIdValue,
+                    out var employeeId) ||
+                report.ReporterId != employeeId)
+            {
+                return Forbid();
+            }
+        }
+        else if (User.IsInRole("Technician"))
+        {
+            var technicianIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.TechnicianId);
+
+            if (!int.TryParse(
+                    technicianIdValue,
+                    out var technicianId))
+            {
+                return Forbid();
+            }
+
+            query = query.Where(
+                item =>
+                    item.TechnicianId ==
+                        technicianId);
+        }
+        else
+        {
+            return Forbid();
+        }
+
+        var assignment =
+            await query
+                .OrderByDescending(item =>
+                    item.IsActive)
+                .ThenByDescending(item =>
+                    item.AssignedAt)
+                .FirstOrDefaultAsync();
+
+        if (assignment is null)
+        {
+            return Ok(null);
+        }
+
+        return Ok(ToDto(assignment));
+    }
+
     [HttpPost]
     [Authorize(
         Policy = AuthorizationPolicies.Management)]

@@ -192,6 +192,7 @@ public class FaultReportsController : ControllerBase
             .Include(report => report.FaultStatus)
             .Include(report => report.FaultType)
             .Include(report => report.FaultPriority)
+            .Include(report => report.Assignments)
             .FirstOrDefaultAsync(report =>
                 report.Id == id);
 
@@ -216,6 +217,24 @@ public class FaultReportsController : ControllerBase
                     employeeIdValue,
                     out var employeeId) &&
                 report.ReporterId == employeeId)
+            {
+                return Ok(ToDto(report));
+            }
+        }
+
+        if (User.IsInRole("Technician"))
+        {
+            var technicianIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.TechnicianId);
+
+            if (int.TryParse(
+                    technicianIdValue,
+                    out var technicianId) &&
+                report.Assignments.Any(
+                    assignment =>
+                        assignment.TechnicianId ==
+                        technicianId))
             {
                 return Ok(ToDto(report));
             }

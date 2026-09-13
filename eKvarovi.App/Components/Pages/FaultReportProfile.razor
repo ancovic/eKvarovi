@@ -188,6 +188,186 @@ else
 
         </MudPaper>
 
+        <MudPaper Class="pa-5">
+
+            <MudText Typo="Typo.h5"
+                     Class="mb-3">
+                Radni nalog
+            </MudText>
+
+            @if (latestAssignment is null)
+            {
+                <MudText>
+                    Prijava još nije dodijeljena izvršitelju.
+                </MudText>
+            }
+            else
+            {
+                <MudGrid>
+
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2">
+                            Izvršitelj
+                        </MudText>
+
+                        <MudText>
+                            @latestAssignment.TechnicianName
+                        </MudText>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2">
+                            Dodijeljeno
+                        </MudText>
+
+                        <MudText>
+                            @latestAssignment.AssignedAt.ToString("dd.MM.yyyy. HH:mm")
+                        </MudText>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2">
+                            Nalog
+                        </MudText>
+
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Color="@(latestAssignment.IsActive ? Color.Success : Color.Default)">
+                            @(latestAssignment.IsActive
+                                ? "Aktivan"
+                                : "Završen")
+                        </MudChip>
+                    </MudItem>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                            latestAssignment.Note))
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2">
+                                Bilješka
+                            </MudText>
+
+                            <MudText>
+                                @latestAssignment.Note
+                            </MudText>
+                        </MudItem>
+                    }
+
+                </MudGrid>
+            }
+
+            @if (CanManage &&
+                 report is not null &&
+                 report.FaultStatusName != "Zaprimljeno" &&
+                 report.FaultStatusName != "Riješeno" &&
+                 report.FaultStatusName != "Zatvoreno")
+            {
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.h6"
+                         Class="mb-3">
+                    @(latestAssignment?.IsActive == true
+                        ? "Ponovna dodjela"
+                        : "Dodijeli izvršitelja")
+                </MudText>
+
+                <MudSelect T="int?"
+                           Label="Izvršitelj"
+                           @bind-Value="selectedTechnicianId"
+                           Required="true"
+                           Variant="Variant.Outlined"
+                           Class="mb-3">
+
+                    @foreach (var technician in technicians)
+                    {
+                        <MudSelectItem T="int?"
+                                       Value="@((int?)technician.Id)">
+                            @technician.Name
+                        </MudSelectItem>
+                    }
+
+                </MudSelect>
+
+                <MudTextField T="string"
+                              Label="Bilješka naloga"
+                              @bind-Value="assignmentNote"
+                              Lines="3"
+                              Variant="Variant.Outlined"
+                              Class="mb-3" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="AssignTechnician"
+                           Disabled="isAssigning">
+
+                    @(isAssigning
+                        ? "Spremanje..."
+                        : latestAssignment?.IsActive == true
+                            ? "Ponovno dodijeli"
+                            : "Dodijeli")
+
+                </MudButton>
+            }
+
+        </MudPaper>
+
+        @if (CanManage)
+        {
+            <MudPaper Class="pa-5">
+
+                <MudText Typo="Typo.h5"
+                         Class="mb-3">
+                    Povijest dodjela
+                </MudText>
+
+                <MudTable Items="@assignmentHistory"
+                          Hover="true"
+                          Dense="true"
+                          Bordered="true">
+
+                    <HeaderContent>
+                        <MudTh>Izvršitelj</MudTh>
+                        <MudTh>Dodijeljeno</MudTh>
+                        <MudTh>Završeno</MudTh>
+                        <MudTh>Aktivan</MudTh>
+                        <MudTh>Bilješka</MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+
+                        <MudTd DataLabel="Izvršitelj">
+                            @context.TechnicianName
+                        </MudTd>
+
+                        <MudTd DataLabel="Dodijeljeno">
+                            @context.AssignedAt.ToString("dd.MM.yyyy. HH:mm")
+                        </MudTd>
+
+                        <MudTd DataLabel="Završeno">
+                            @(context.EndedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+                        </MudTd>
+
+                        <MudTd DataLabel="Aktivan">
+                            @(context.IsActive ? "Da" : "Ne")
+                        </MudTd>
+
+                        <MudTd DataLabel="Bilješka">
+                            @(context.Note ?? "-")
+                        </MudTd>
+
+                    </RowTemplate>
+
+                    <NoRecordsContent>
+                        <MudText Class="pa-3">
+                            Prijava još nema dodjela.
+                        </MudText>
+                    </NoRecordsContent>
+
+                </MudTable>
+
+            </MudPaper>
+        }
+
         <MudStack Row="true"
                   Spacing="2">
 
@@ -216,6 +396,15 @@ else
 
     private FaultReportDto? report;
     private List<FaultMediaDto> mediaItems = new();
+
+    private WorkAssignmentDto? latestAssignment;
+    private List<WorkAssignmentDto> assignmentHistory = new();
+    private List<LookupDto> technicians = new();
+
+    private int? selectedTechnicianId;
+    private string? assignmentNote;
+
+    private bool isAssigning;
 
     private bool isLoading = true;
     private string? errorMessage;
@@ -278,6 +467,28 @@ else
                 await Http.GetFromJsonAsync<List<FaultMediaDto>>(
                     $"api/faultreports/{Id}/media")
                 ?? new();
+
+            if (CanManage ||
+                CurrentUser.HasRole("Reporter") ||
+                CurrentUser.HasRole("Technician"))
+            {
+                latestAssignment =
+                    await Http.GetFromJsonAsync<WorkAssignmentDto?>(
+                        $"api/workassignments/faultreport/{Id}/latest");
+            }
+
+            if (CanManage)
+            {
+                assignmentHistory =
+                    await Http.GetFromJsonAsync<List<WorkAssignmentDto>>(
+                        $"api/workassignments?faultReportId={Id}")
+                    ?? new();
+
+                technicians =
+                    await Http.GetFromJsonAsync<List<LookupDto>>(
+                        "api/technicians/lookup")
+                    ?? new();
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -333,6 +544,72 @@ else
         {
             errorMessage =
                 $"Fotografiju nije moguće izbrisati: {ex.Message}";
+        }
+    }
+
+    private async Task AssignTechnician()
+    {
+        errorMessage = null;
+
+        if (!selectedTechnicianId.HasValue ||
+            selectedTechnicianId.Value <= 0)
+        {
+            errorMessage =
+                "Odaberi izvršitelja.";
+
+            return;
+        }
+
+        isAssigning = true;
+
+        try
+        {
+            var request =
+                new SaveWorkAssignmentDto
+                {
+                    FaultReportId = Id,
+                    TechnicianId =
+                        selectedTechnicianId.Value,
+
+                    Note =
+                        string.IsNullOrWhiteSpace(
+                            assignmentNote)
+                            ? null
+                            : assignmentNote.Trim()
+                };
+
+            var response =
+                await Http.PostAsJsonAsync(
+                    "api/workassignments",
+                    request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Radni nalog nije moguće spremiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            selectedTechnicianId = null;
+            assignmentNote = null;
+
+            await LoadProfile();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Radni nalog nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isAssigning = false;
         }
     }
 

@@ -41,6 +41,7 @@ public class FaultMediaController : ControllerBase
         int faultReportId)
     {
         var report = await _context.FaultReports
+            .Include(report => report.Assignments)
             .FirstOrDefaultAsync(report =>
                 report.Id == faultReportId);
 
@@ -312,6 +313,22 @@ public class FaultMediaController : ControllerBase
                     out var employeeId) &&
                 report.ReporterId ==
                     employeeId;
+        }
+
+        if (User.IsInRole("Technician"))
+        {
+            var technicianIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.TechnicianId);
+
+            return
+                int.TryParse(
+                    technicianIdValue,
+                    out var technicianId) &&
+                report.Assignments.Any(
+                    assignment =>
+                        assignment.TechnicianId ==
+                        technicianId);
         }
 
         return false;

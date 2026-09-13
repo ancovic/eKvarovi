@@ -1,0 +1,283 @@
+﻿@page "/assignments"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Radni nalozi</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Radni nalozi
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4">
+
+    <MudGrid>
+
+        <MudItem xs="12" md="6">
+
+            <MudSelect T="int?"
+                       Label="Izvršitelj"
+                       @bind-Value="selectedTechnicianId"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                @foreach (var technician in technicians)
+                {
+                    <MudSelectItem T="int?"
+                                   Value="@((int?)technician.Id)">
+                        @technician.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+
+            <MudSelect T="bool?"
+                       Label="Aktivnost"
+                       @bind-Value="selectedIsActive"
+                       Variant="Variant.Outlined"
+                       Clearable="true">
+
+                <MudSelectItem T="bool?"
+                               Value="@((bool?)true)">
+                    Aktivni
+                </MudSelectItem>
+
+                <MudSelectItem T="bool?"
+                               Value="@((bool?)false)">
+                    Završeni
+                </MudSelectItem>
+
+            </MudSelect>
+
+        </MudItem>
+
+    </MudGrid>
+
+    <MudStack Row="true"
+              Spacing="2"
+              Class="mt-4">
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="LoadAssignments">
+            Primijeni filtere
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Secondary"
+                   OnClick="ResetFilters">
+            Reset filtera
+        </MudButton>
+
+    </MudStack>
+
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else
+{
+    <MudTable Items="@assignments"
+              Hover="true"
+              Striped="true"
+              Bordered="true"
+              Dense="true">
+
+        <HeaderContent>
+            <MudTh>Prijava</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Izvršitelj</MudTh>
+            <MudTh>Status naloga</MudTh>
+            <MudTh>Dodijeljeno</MudTh>
+            <MudTh>Završeno</MudTh>
+            <MudTh>Bilješka</MudTh>
+            <MudTh>Detalji</MudTh>
+        </HeaderContent>
+
+        <RowTemplate>
+
+            <MudTd DataLabel="Prijava">
+                @context.FaultReportTitle
+            </MudTd>
+
+            <MudTd DataLabel="Lokacija">
+                @context.LocationName
+            </MudTd>
+
+            <MudTd DataLabel="Izvršitelj">
+                @context.TechnicianName
+            </MudTd>
+
+            <MudTd DataLabel="Status naloga">
+
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive
+                        ? "Aktivan"
+                        : "Završen")
+                </MudChip>
+
+            </MudTd>
+
+            <MudTd DataLabel="Dodijeljeno">
+                @context.AssignedAt.ToString("dd.MM.yyyy. HH:mm")
+            </MudTd>
+
+            <MudTd DataLabel="Završeno">
+                @(context.EndedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Bilješka">
+                @(context.Note ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Detalji">
+
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                               Color="Color.Primary"
+                               Href="@($"/faultreports/{context.FaultReportId}")"
+                               Title="Otvori prijavu" />
+
+            </MudTd>
+
+        </RowTemplate>
+
+        <NoRecordsContent>
+            <MudText Class="pa-4">
+                Nema radnih naloga za zadane filtere.
+            </MudText>
+        </NoRecordsContent>
+
+    </MudTable>
+}
+
+@code {
+    private List<WorkAssignmentDto> assignments = new();
+    private List<LookupDto> technicians = new();
+
+    private int? selectedTechnicianId;
+    private bool? selectedIsActive;
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasAnyRole(
+                "Admin",
+                "Manager"))
+        {
+            errorMessage =
+                "Nemaš ovlast za pregled radnih naloga.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadLookups();
+        await LoadAssignments();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadLookups()
+    {
+        technicians =
+            await Http.GetFromJsonAsync<List<LookupDto>>(
+                "api/technicians/lookup")
+            ?? new();
+    }
+
+    private async Task LoadAssignments()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var query = new List<string>();
+
+            if (selectedTechnicianId.HasValue)
+            {
+                query.Add(
+                    $"technicianId={selectedTechnicianId.Value}");
+            }
+
+            if (selectedIsActive.HasValue)
+            {
+                query.Add(
+                    $"isActive={selectedIsActive.Value.ToString().ToLowerInvariant()}");
+            }
+
+            var url =
+                "api/workassignments";
+
+            if (query.Count > 0)
+            {
+                url +=
+                    "?" +
+                    string.Join("&", query);
+            }
+
+            assignments =
+                await Http.GetFromJsonAsync<List<WorkAssignmentDto>>(
+                    url)
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Radne naloge nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        selectedTechnicianId = null;
+        selectedIsActive = null;
+
+        await LoadAssignments();
+    }
+}

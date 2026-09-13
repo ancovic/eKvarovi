@@ -1,0 +1,173 @@
+﻿@page "/myassignments"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Moji radni nalozi</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Moji radni nalozi
+</MudText>
+
+<MudText Typo="Typo.body1"
+         Class="mb-4">
+    Prikazani su tvoji aktivni i završeni radni nalozi.
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else
+{
+    <MudTable Items="@assignments"
+              Hover="true"
+              Striped="true"
+              Bordered="true"
+              Dense="true">
+
+        <HeaderContent>
+            <MudTh>Prijava</MudTh>
+            <MudTh>Lokacija</MudTh>
+            <MudTh>Status prijave</MudTh>
+            <MudTh>Nalog</MudTh>
+            <MudTh>Dodijeljeno</MudTh>
+            <MudTh>Završeno</MudTh>
+            <MudTh>Bilješka</MudTh>
+            <MudTh>Detalji</MudTh>
+        </HeaderContent>
+
+        <RowTemplate>
+
+            <MudTd DataLabel="Prijava">
+                @context.FaultReportTitle
+            </MudTd>
+
+            <MudTd DataLabel="Lokacija">
+                @context.LocationName
+            </MudTd>
+
+            <MudTd DataLabel="Status prijave">
+                @context.FaultStatusName
+            </MudTd>
+
+            <MudTd DataLabel="Nalog">
+
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive
+                        ? "Aktivan"
+                        : "Završen")
+                </MudChip>
+
+            </MudTd>
+
+            <MudTd DataLabel="Dodijeljeno">
+                @context.AssignedAt.ToString("dd.MM.yyyy. HH:mm")
+            </MudTd>
+
+            <MudTd DataLabel="Završeno">
+                @(context.EndedAt?.ToString("dd.MM.yyyy. HH:mm") ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Bilješka">
+                @(context.Note ?? "-")
+            </MudTd>
+
+            <MudTd DataLabel="Detalji">
+
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                               Color="Color.Primary"
+                               Href="@($"/faultreports/{context.FaultReportId}")"
+                               Title="Otvori prijavu" />
+
+            </MudTd>
+
+        </RowTemplate>
+
+        <NoRecordsContent>
+            <MudText Class="pa-4">
+                Nemaš dodijeljenih radnih naloga.
+            </MudText>
+        </NoRecordsContent>
+
+    </MudTable>
+}
+
+@code {
+    private List<WorkAssignmentDto> assignments = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Technician"))
+        {
+            errorMessage =
+                "Nemaš ovlast za pregled vlastitih radnih naloga.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadAssignments();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadAssignments()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            assignments =
+                await Http.GetFromJsonAsync<List<WorkAssignmentDto>>(
+                    "api/workassignments/mine")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Radne naloge nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
