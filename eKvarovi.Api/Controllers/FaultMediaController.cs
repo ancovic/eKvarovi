@@ -3,6 +3,7 @@ using eKvarovi.Api.Data;
 using eKvarovi.Api.Security;
 using eKvarovi.Shared.DTOs;
 using eKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,6 +25,13 @@ public class FaultMediaController : ControllerBase
                 ["image/webp"] = ".webp"
             };
 
+    private static readonly Dictionary<string, string>
+        AllowedDocumentContentTypes =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["application/pdf"] = ".pdf"
+            };
+
     private readonly EKvaroviDbContext _context;
     private readonly IWebHostEnvironment _environment;
 
@@ -36,7 +44,7 @@ public class FaultMediaController : ControllerBase
     }
 
     [HttpGet]
-    [Microsoft.AspNetCore.Authorization.Authorize]
+    [Authorize]
     public async Task<ActionResult<List<FaultMediaDto>>> GetMedia(
         int faultReportId)
     {
@@ -72,8 +80,8 @@ public class FaultMediaController : ControllerBase
     [HttpPost("before-photo")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxFileSize)]
-    [Microsoft.AspNetCore.Authorization.Authorize(
-        Policy = eKvarovi.Api.Security.AuthorizationPolicies.ReporterOnly)]
+    [Authorize(
+        Policy = AuthorizationPolicies.ReporterOnly)]
     public async Task<ActionResult<FaultMediaDto>> UploadBeforePhoto(
         int faultReportId,
         IFormFile file)
@@ -139,85 +147,112 @@ public class FaultMediaController : ControllerBase
                 "Dopušteni su JPG, PNG i WEBP formati.");
         }
 
-        var webRoot =
-            _environment.WebRootPath
-            ?? Path.Combine(
-                _environment.ContentRootPath,
-                "wwwroot");
+        return await SaveMedia(
+            faultReportId,
+            null,
+            file,
+            AttachmentPurpose.BeforePhoto,
+            extension);
+    }
 
-        var uploadDirectory = Path.Combine(
-            webRoot,
-            "uploads",
-            "faultreports");
+    [HttpPost("interventions/{interventionId:int}/after-photo")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxFileSize)]
+    [Authorize(Roles = "Admin,Technician")]
+    public async Task<ActionResult<FaultMediaDto>> UploadAfterPhoto(
+        int faultReportId,
+        int interventionId,
+        IFormFile file)
+    {
+        var validation =
+            await ValidateInterventionUpload(
+                faultReportId,
+                interventionId);
 
-        Directory.CreateDirectory(
-            uploadDirectory);
-
-        var storedFileName =
-            $"{Guid.NewGuid():N}{extension}";
-
-        var physicalPath = Path.Combine(
-            uploadDirectory,
-            storedFileName);
-
-        await using (var stream =
-            new FileStream(
-                physicalPath,
-                FileMode.CreateNew,
-                FileAccess.Write))
+        if (validation.ErrorResult is not null)
         {
-            await file.CopyToAsync(stream);
+            return validation.ErrorResult;
         }
 
-        var media = new FaultMedia
+        if (file is null ||
+            file.Length == 0)
         {
-            FaultReportId = faultReportId,
+            return BadRequest(
+                "Odaberi fotografiju.");
+        }
 
-            OriginalFileName =
-                Path.GetFileName(
-                    file.FileName),
+        if (file.Length > MaxFileSize)
+        {
+            return BadRequest(
+                "Fotografija smije imati najviše 10 MB.");
+        }
 
-            StoredFileName =
-                storedFileName,
-
-            ContentType =
+        if (!AllowedImageContentTypes.TryGetValue(
                 file.ContentType,
-
-            FileSize =
-                file.Length,
-
-            AttachmentPurpose =
-                AttachmentPurpose.BeforePhoto,
-
-            UploadedAt =
-                DateTime.UtcNow,
-
-            InterventionId =
-                null
-        };
-
-        try
+                out var extension))
         {
-            _context.FaultMedia.Add(media);
-            await _context.SaveChangesAsync();
-        }
-        catch
-        {
-            if (System.IO.File.Exists(
-                    physicalPath))
-            {
-                System.IO.File.Delete(
-                    physicalPath);
-            }
-
-            throw;
+            return BadRequest(
+                "Dopušteni su JPG, PNG i WEBP formati.");
         }
 
-        return Ok(ToDto(media));
+        return await SaveMedia(
+            faultReportId,
+            interventionId,
+            file,
+            AttachmentPurpose.AfterPhoto,
+            extension);
+    }
+
+    [HttpPost("interventions/{interventionId:int}/document")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxFileSize)]
+    [Authorize(Roles = "Admin,Technician")]
+    public async Task<ActionResult<FaultMediaDto>> UploadDocument(
+        int faultReportId,
+        int interventionId,
+        IFormFile file)
+    {
+        var validation =
+            await ValidateInterventionUpload(
+                faultReportId,
+                interventionId);
+
+        if (validation.ErrorResult is not null)
+        {
+            return validation.ErrorResult;
+        }
+
+        if (file is null ||
+            file.Length == 0)
+        {
+            return BadRequest(
+                "Odaberi dokument.");
+        }
+
+        if (file.Length > MaxFileSize)
+        {
+            return BadRequest(
+                "Dokument smije imati najviše 10 MB.");
+        }
+
+        if (!AllowedDocumentContentTypes.TryGetValue(
+                file.ContentType,
+                out var extension))
+        {
+            return BadRequest(
+                "Dopušten je samo PDF dokument.");
+        }
+
+        return await SaveMedia(
+            faultReportId,
+            interventionId,
+            file,
+            AttachmentPurpose.Document,
+            extension);
     }
 
     [HttpDelete("{mediaId:int}")]
-    [Microsoft.AspNetCore.Authorization.Authorize]
+    [Authorize]
     public async Task<IActionResult> Delete(
         int faultReportId,
         int mediaId)
@@ -227,6 +262,10 @@ public class FaultMediaController : ControllerBase
                 item.FaultReport)
             .ThenInclude(report =>
                 report!.FaultStatus)
+            .Include(item =>
+                item.Intervention)
+            .ThenInclude(intervention =>
+                intervention!.WorkAssignment)
             .FirstOrDefaultAsync(item =>
                 item.Id == mediaId &&
                 item.FaultReportId == faultReportId);
@@ -261,26 +300,44 @@ public class FaultMediaController : ControllerBase
             }
         }
 
+        if (!canDelete &&
+            User.IsInRole("Technician") &&
+            media.Intervention is not null &&
+            media.Intervention.WorkAssignment is not null &&
+            (media.AttachmentPurpose ==
+                AttachmentPurpose.AfterPhoto ||
+             media.AttachmentPurpose ==
+                AttachmentPurpose.Document))
+        {
+            var technicianIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.TechnicianId);
+
+            if (int.TryParse(
+                    technicianIdValue,
+                    out var technicianId))
+            {
+                canDelete =
+                    media.Intervention.WorkAssignment.TechnicianId ==
+                        technicianId &&
+                    media.Intervention.WorkAssignment.IsActive &&
+                    media.Intervention.FinishedAt is null &&
+                    media.FaultReport?.IsArchived == false;
+            }
+        }
+
         if (!canDelete)
         {
             return Forbid();
         }
 
         _context.FaultMedia.Remove(media);
+
         await _context.SaveChangesAsync();
 
-        var webRoot =
-            _environment.WebRootPath
-            ?? Path.Combine(
-                _environment.ContentRootPath,
-                "wwwroot");
-
-        var physicalPath = Path.Combine(
-            webRoot,
-            "uploads",
-            "faultreports",
-            Path.GetFileName(
-                media.StoredFileName));
+        var physicalPath =
+            GetPhysicalPath(
+                media.StoredFileName);
 
         if (System.IO.File.Exists(
                 physicalPath))
@@ -290,6 +347,201 @@ public class FaultMediaController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    private async Task<(
+        Intervention? Intervention,
+        ActionResult<FaultMediaDto>? ErrorResult)>
+        ValidateInterventionUpload(
+            int faultReportId,
+            int interventionId)
+    {
+        var intervention =
+            await _context.Interventions
+                .Include(item =>
+                    item.WorkAssignment)
+                .ThenInclude(assignment =>
+                    assignment!.FaultReport)
+                .FirstOrDefaultAsync(item =>
+                    item.Id == interventionId &&
+                    item.WorkAssignment != null &&
+                    item.WorkAssignment.FaultReportId ==
+                        faultReportId);
+
+        if (intervention is null)
+        {
+            return (
+                null,
+                NotFound(
+                    "Intervencija nije pronađena."));
+        }
+
+        var assignment =
+            intervention.WorkAssignment!;
+
+        var report =
+            assignment.FaultReport;
+
+        if (report is null)
+        {
+            return (
+                null,
+                NotFound(
+                    "Prijava kvara nije pronađena."));
+        }
+
+        if (!User.IsInRole("Admin"))
+        {
+            var technicianIdValue =
+                User.FindFirstValue(
+                    AppClaimTypes.TechnicianId);
+
+            if (!int.TryParse(
+                    technicianIdValue,
+                    out var technicianId) ||
+                assignment.TechnicianId !=
+                    technicianId)
+            {
+                return (
+                    null,
+                    Forbid());
+            }
+        }
+
+        if (report.IsArchived)
+        {
+            return (
+                null,
+                BadRequest(
+                    "Arhiviranoj prijavi nije moguće dodavati privitke."));
+        }
+
+        if (!assignment.IsActive)
+        {
+            return (
+                null,
+                BadRequest(
+                    "Privitke je moguće dodavati samo na aktivnom radnom nalogu."));
+        }
+
+        if (intervention.StartedAt is null ||
+            intervention.FinishedAt.HasValue)
+        {
+            return (
+                null,
+                BadRequest(
+                    "Privitke je moguće dodavati samo na intervenciju koja je u tijeku."));
+        }
+
+        return (
+            intervention,
+            null);
+    }
+
+    private async Task<ActionResult<FaultMediaDto>> SaveMedia(
+        int faultReportId,
+        int? interventionId,
+        IFormFile file,
+        AttachmentPurpose purpose,
+        string extension)
+    {
+        var uploadDirectory =
+            GetUploadDirectory();
+
+        Directory.CreateDirectory(
+            uploadDirectory);
+
+        var storedFileName =
+            $"{Guid.NewGuid():N}{extension}";
+
+        var physicalPath =
+            Path.Combine(
+                uploadDirectory,
+                storedFileName);
+
+        await using (var stream =
+            new FileStream(
+                physicalPath,
+                FileMode.CreateNew,
+                FileAccess.Write))
+        {
+            await file.CopyToAsync(
+                stream);
+        }
+
+        var media =
+            new FaultMedia
+            {
+                FaultReportId =
+                    faultReportId,
+
+                InterventionId =
+                    interventionId,
+
+                OriginalFileName =
+                    Path.GetFileName(
+                        file.FileName),
+
+                StoredFileName =
+                    storedFileName,
+
+                ContentType =
+                    file.ContentType,
+
+                FileSize =
+                    file.Length,
+
+                AttachmentPurpose =
+                    purpose,
+
+                UploadedAt =
+                    DateTime.UtcNow
+            };
+
+        try
+        {
+            _context.FaultMedia.Add(
+                media);
+
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            if (System.IO.File.Exists(
+                    physicalPath))
+            {
+                System.IO.File.Delete(
+                    physicalPath);
+            }
+
+            throw;
+        }
+
+        return Ok(
+            ToDto(media));
+    }
+
+    private string GetUploadDirectory()
+    {
+        var webRoot =
+            _environment.WebRootPath
+            ?? Path.Combine(
+                _environment.ContentRootPath,
+                "wwwroot");
+
+        return Path.Combine(
+            webRoot,
+            "uploads",
+            "faultreports");
+    }
+
+    private string GetPhysicalPath(
+        string storedFileName)
+    {
+        return Path.Combine(
+            GetUploadDirectory(),
+            Path.GetFileName(
+                storedFileName));
     }
 
     private bool CanViewReport(
@@ -342,9 +594,12 @@ public class FaultMediaController : ControllerBase
 
         return new FaultMediaDto
         {
-            Id = media.Id,
+            Id =
+                media.Id,
+
             FaultReportId =
                 media.FaultReportId,
+
             InterventionId =
                 media.InterventionId,
 
