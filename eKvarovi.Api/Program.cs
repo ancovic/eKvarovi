@@ -414,9 +414,69 @@ using (var scope = app.Services.CreateScope())
         );
     }
 
-    await db.SaveChangesAsync();
+    if (!await db.Materials.AnyAsync())
+    {
+        db.Materials.AddRange(
+            new Material
+            {
+                Name = "LED žarulja",
+                Description = "LED žarulja za unutarnju rasvjetu.",
+                IsActive = true,
+                MaterialUnitId = 1
+            },
+            new Material
+            {
+                Name = "Osigurač 16 A",
+                Description = "Električni automatski osigurač.",
+                IsActive = true,
+                MaterialUnitId = 1
+            },
+            new Material
+            {
+                Name = "Električni kabel",
+                Description = "Električni instalacijski kabel.",
+                IsActive = true,
+                MaterialUnitId = 2
+            },
+            new Material
+            {
+                Name = "Termostatski ventil",
+                Description = "Ventil za sustav grijanja.",
+                IsActive = true,
+                MaterialUnitId = 1
+            },
+            new Material
+            {
+                Name = "Bakrena cijev",
+                Description = "Cijev za vodovodne i grijaće instalacije.",
+                IsActive = true,
+                MaterialUnitId = 2
+            },
+            new Material
+            {
+                Name = "Rashladna tekućina",
+                Description = "Tekućina za servis rashladnih sustava.",
+                IsActive = true,
+                MaterialUnitId = 3
+            },
+            new Material
+            {
+                Name = "Građevinska masa",
+                Description = "Masa za manje građevinske popravke.",
+                IsActive = true,
+                MaterialUnitId = 4
+            },
+            new Material
+            {
+                Name = "Set vijaka",
+                Description = "Paket vijaka za tehničke popravke.",
+                IsActive = true,
+                MaterialUnitId = 5
+            }
+        );
+    }
 
-    await AppUserSeeder.SeedAsync(db);
+    await db.SaveChangesAsync();
 
     await AppUserSeeder.SeedAsync(db);
 }
