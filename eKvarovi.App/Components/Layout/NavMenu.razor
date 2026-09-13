@@ -54,6 +54,19 @@
             </MudNavLink>
         }
 
+        @if (CurrentUser.HasRole("Reporter"))
+        {
+            <MudNavLink Href="/faultreports/create"
+                        Icon="@Icons.Material.Filled.AddCircle">
+                Nova prijava
+            </MudNavLink>
+
+            <MudNavLink Href="/myreports"
+                        Icon="@Icons.Material.Filled.AssignmentInd">
+                Moje prijave
+            </MudNavLink>
+        }
+
         <MudDivider Class="my-2" />
 
         <MudText Typo="Typo.caption"

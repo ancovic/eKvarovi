@@ -1,0 +1,286 @@
+﻿@page "/faultreports/edit/{Id:int}"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Uredi prijavu</PageTitle>
+
+<MudText Typo="Typo.h4"
+         GutterBottom="true">
+    Uredi prijavu
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (report is not null)
+{
+    <EditForm Model="model"
+              OnValidSubmit="Save"
+              FormName="faultreport-edit">
+
+        <MudPaper Class="pa-4">
+
+            <MudText Typo="Typo.h6"
+                     Class="mb-2">
+                @report.Title
+            </MudText>
+
+            <MudText Typo="Typo.body2"
+                     Class="mb-3">
+                @report.LocationName · @report.ReporterName
+            </MudText>
+
+            <MudText Class="mb-4">
+                @report.Description
+            </MudText>
+
+            <MudSelect T="int"
+                       Label="Vrsta kvara"
+                       @bind-Value="model.FaultTypeId"
+                       Required="true"
+                       Variant="Variant.Outlined"
+                       Class="mb-4">
+
+                @foreach (var type in faultTypes)
+                {
+                    <MudSelectItem T="int"
+                                   Value="@type.Id">
+                        @type.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudSelect T="int"
+                       Label="Prioritet"
+                       @bind-Value="model.FaultPriorityId"
+                       Required="true"
+                       Variant="Variant.Outlined"
+                       Class="mb-4">
+
+                @foreach (var priority in faultPriorities)
+                {
+                    <MudSelectItem T="int"
+                                   Value="@priority.Id">
+                        @priority.Name
+                    </MudSelectItem>
+                }
+
+            </MudSelect>
+
+            <MudDatePicker Label="Rok"
+                           @bind-Date="model.DueDate"
+                           Variant="Variant.Outlined"
+                           Clearable="true"
+                           Class="mb-4" />
+
+            <MudStack Row="true"
+                      Spacing="2">
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="isSaving">
+
+                    @(isSaving
+                        ? "Spremanje..."
+                        : "Spremi")
+
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Href="@($"/faultreports/{Id}")">
+                    Odustani
+                </MudButton>
+
+            </MudStack>
+
+        </MudPaper>
+
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private FaultReportDto? report;
+    private ReviewFaultReportDto model = new();
+
+    private List<LookupDto> faultTypes = new();
+    private List<LookupDto> faultPriorities = new();
+
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasAnyRole(
+                "Admin",
+                "Manager"))
+        {
+            errorMessage =
+                "Nemaš ovlast za uređivanje prijave.";
+
+            isLoading = false;
+
+            StateHasChanged();
+            return;
+        }
+
+        await LoadData();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            faultTypes =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/faulttypes")
+                ?? new();
+
+            faultPriorities =
+                await Http.GetFromJsonAsync<List<LookupDto>>(
+                    "api/faultpriorities")
+                ?? new();
+
+            report =
+                await Http.GetFromJsonAsync<FaultReportDto>(
+                    $"api/faultreports/{Id}");
+
+            if (report is null)
+            {
+                errorMessage =
+                    "Prijava nije pronađena.";
+
+                return;
+            }
+
+            model = new ReviewFaultReportDto
+            {
+                FaultTypeId =
+                    report.FaultTypeId ?? 0,
+
+                FaultPriorityId =
+                    report.FaultPriorityId ?? 0,
+
+                DueDate =
+                    report.DueDate
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Podatke nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (model.FaultTypeId <= 0 ||
+            model.FaultPriorityId <= 0)
+        {
+            errorMessage =
+                "Odaberi vrstu kvara i prioritet.";
+
+            return;
+        }
+
+        var selectedPriority =
+            faultPriorities.FirstOrDefault(
+                priority =>
+                    priority.Id ==
+                    model.FaultPriorityId);
+
+        if (selectedPriority?.Name ==
+                "Kritičan" &&
+            !model.DueDate.HasValue)
+        {
+            errorMessage =
+                "Kritična prijava mora imati rok.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var response =
+                await Http.PutAsJsonAsync(
+                    $"api/faultreports/{Id}/review",
+                    model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Promjene nisu spremljene."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/faultreports/{Id}");
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Promjene nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

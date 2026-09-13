@@ -1,0 +1,280 @@
+﻿@page "/faultreports/create"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Nova prijava kvara</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">
+    Nova prijava kvara
+</MudText>
+
+<MudText Typo="Typo.body1" Class="mb-4">
+    Opiši uočeni kvar i po potrebi priloži početnu fotografiju.
+    Lokacija i prijavitelj određuju se automatski prema prijavljenom korisniku.
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error"
+              Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<EditForm Model="model"
+          OnValidSubmit="Save"
+          FormName="faultreport-create-form">
+
+    <MudPaper Class="pa-4">
+
+        <MudTextField T="string"
+                      Label="Naslov"
+                      @bind-Value="model.Title"
+                      Required="true"
+                      Variant="Variant.Outlined"
+                      Class="mb-4" />
+
+        <MudTextField T="string"
+                      Label="Opis problema"
+                      @bind-Value="model.Description"
+                      Required="true"
+                      Lines="5"
+                      Variant="Variant.Outlined"
+                      Class="mb-4" />
+
+        <MudText Typo="Typo.subtitle1"
+                 Class="mb-2">
+            Fotografija kvara
+        </MudText>
+
+        <InputFile OnChange="HandleFileSelected"
+                   accept="image/jpeg,image/png,image/webp" />
+
+        <MudText Typo="Typo.caption"
+                 Class="d-block mt-2 mb-4">
+            Dopušteni formati: JPG, PNG i WEBP.
+            Maksimalna veličina: 10 MB.
+        </MudText>
+
+        @if (selectedFile is not null)
+        {
+            <MudAlert Severity="Severity.Info"
+                      Class="mb-4">
+
+                Odabrano:
+                @selectedFile.Name
+                (@FormatBytes(selectedFile.Size))
+
+            </MudAlert>
+        }
+
+        <MudStack Row="true"
+                  Spacing="2">
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="isSaving">
+
+                @(isSaving
+                    ? "Spremanje..."
+                    : "Spremi")
+
+            </MudButton>
+
+            <MudButton Variant="Variant.Outlined"
+                       Href="/myreports">
+                Odustani
+            </MudButton>
+
+        </MudStack>
+
+    </MudPaper>
+
+</EditForm>
+
+@code {
+    private const long MaxFileSize =
+        10 * 1024 * 1024;
+
+    private CreateFaultReportDto model = new();
+
+    private IBrowserFile? selectedFile;
+
+    private bool isSaving;
+    private string? errorMessage;
+
+    private void HandleFileSelected(
+        InputFileChangeEventArgs args)
+    {
+        errorMessage = null;
+
+        var file = args.File;
+
+        if (file.Size > MaxFileSize)
+        {
+            selectedFile = null;
+
+            errorMessage =
+                "Fotografija smije imati najviše 10 MB.";
+
+            return;
+        }
+
+        if (file.ContentType != "image/jpeg" &&
+            file.ContentType != "image/png" &&
+            file.ContentType != "image/webp")
+        {
+            selectedFile = null;
+
+            errorMessage =
+                "Dopušteni su JPG, PNG i WEBP formati.";
+
+            return;
+        }
+
+        selectedFile = file;
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(
+                model.Title) ||
+            string.IsNullOrWhiteSpace(
+                model.Description))
+        {
+            errorMessage =
+                "Naslov i opis problema su obavezni.";
+
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            var response =
+                await Http.PostAsJsonAsync(
+                    "api/faultreports",
+                    model);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Prijavu nije moguće spremiti."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            var createdReport =
+                await response.Content
+                    .ReadFromJsonAsync<FaultReportDto>();
+
+            if (createdReport is null)
+            {
+                errorMessage =
+                    "API nije vratio spremljenu prijavu.";
+
+                return;
+            }
+
+            if (selectedFile is not null)
+            {
+                var uploadSucceeded =
+                    await UploadBeforePhoto(
+                        createdReport.Id);
+
+                if (!uploadSucceeded)
+                {
+                    return;
+                }
+            }
+
+            Navigation.NavigateTo(
+                "/myreports");
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Prijavu nije moguće spremiti: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<bool> UploadBeforePhoto(
+        int faultReportId)
+    {
+        if (selectedFile is null)
+        {
+            return true;
+        }
+
+        using var form =
+            new MultipartFormDataContent();
+
+        await using var stream =
+            selectedFile.OpenReadStream(
+                MaxFileSize);
+
+        using var fileContent =
+            new StreamContent(stream);
+
+        fileContent.Headers.ContentType =
+            new System.Net.Http.Headers
+                .MediaTypeHeaderValue(
+                    selectedFile.ContentType);
+
+        form.Add(
+            fileContent,
+            "file",
+            selectedFile.Name);
+
+        var response =
+            await Http.PostAsync(
+                $"api/faultreports/{faultReportId}/media/before-photo",
+                form);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var message =
+            await response.Content
+                .ReadAsStringAsync();
+
+        errorMessage =
+            "Prijava je spremljena, ali početnu fotografiju nije moguće učitati. " +
+            message.Trim('"');
+
+        return false;
+    }
+
+    private static string FormatBytes(
+        long bytes)
+    {
+        return bytes >=
+               1024 * 1024
+            ? $"{bytes / 1024d / 1024d:0.0} MB"
+            : $"{bytes / 1024d:0.0} KB";
+    }
+}

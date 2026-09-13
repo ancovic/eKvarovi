@@ -1,0 +1,181 @@
+﻿@page "/myreports"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Moje prijave</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">
+    Moje prijave
+</MudText>
+
+<MudText Typo="Typo.body1" Class="mb-4">
+    Prikazane su samo prijave koje si prijavio/la.
+</MudText>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+<MudButton Variant="Variant.Filled"
+           Color="Color.Primary"
+           StartIcon="@Icons.Material.Filled.Add"
+           Href="/faultreports/create"
+           Class="mb-4">
+    Nova prijava
+</MudButton>
+
+<MudTable Items="@reports"
+          Hover="true"
+          Striped="true"
+          Bordered="true"
+          Dense="true"
+          Loading="@isLoading">
+
+    <HeaderContent>
+        <MudTh>Naslov</MudTh>
+        <MudTh>Lokacija</MudTh>
+        <MudTh>Vrsta</MudTh>
+        <MudTh>Prioritet</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Datum prijave</MudTh>
+        <MudTh>Rok</MudTh>
+        <MudTh>Detalji</MudTh>
+    </HeaderContent>
+
+    <RowTemplate>
+
+        <MudTd DataLabel="Naslov">
+            @context.Title
+        </MudTd>
+
+        <MudTd DataLabel="Lokacija">
+            @context.LocationName
+        </MudTd>
+
+        <MudTd DataLabel="Vrsta">
+            @(context.FaultTypeName ?? "-")
+        </MudTd>
+
+        <MudTd DataLabel="Prioritet">
+            @(context.FaultPriorityName ?? "-")
+        </MudTd>
+
+        <MudTd DataLabel="Status">
+            <MudChip T="string"
+                     Size="Size.Small"
+                     Color="@GetStatusColor(context.FaultStatusName)">
+                @context.FaultStatusName
+            </MudChip>
+        </MudTd>
+
+        <MudTd DataLabel="Datum prijave">
+            @context.CreatedAt.ToString("dd.MM.yyyy. HH:mm")
+        </MudTd>
+
+        <MudTd DataLabel="Rok">
+            @(context.DueDate?.ToString("dd.MM.yyyy.") ?? "-")
+        </MudTd>
+
+        <MudTd DataLabel="Detalji">
+
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                           Color="Color.Primary"
+                           Href="@($"/faultreports/{context.Id}")"
+                           Title="Detalji" />
+
+        </MudTd>
+
+    </RowTemplate>
+
+    <NoRecordsContent>
+        <MudText>
+            Još nemaš prijavljenih kvarova.
+        </MudText>
+    </NoRecordsContent>
+
+</MudTable>
+
+@code {
+    private List<FaultReportDto> reports = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!CurrentUser.HasRole("Reporter"))
+        {
+            errorMessage =
+                "Nemaš ovlast za pregled vlastitih prijava.";
+
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        await LoadReports();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadReports()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            reports =
+                await Http.GetFromJsonAsync<List<FaultReportDto>>(
+                    "api/faultreports/mine")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Prijave nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Zaprimljeno" => Color.Info,
+            "Pregledano" => Color.Primary,
+            "Dodijeljeno" => Color.Secondary,
+            "U radu" => Color.Warning,
+            "Riješeno" => Color.Success,
+            "Zatvoreno" => Color.Default,
+            _ => Color.Default
+        };
+    }
+}

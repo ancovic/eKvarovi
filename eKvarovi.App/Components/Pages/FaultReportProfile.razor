@@ -1,0 +1,361 @@
+﻿@page "/faultreports/{Id:int}"
+@rendermode InteractiveServer
+
+@using eKvarovi.App.Services
+@using eKvarovi.Shared.DTOs
+@using System.Net.Http.Json
+
+@inject HttpClient Http
+@inject CurrentUserService CurrentUser
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+<PageTitle>Detalji prijave</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        @errorMessage
+    </MudAlert>
+}
+
+@if (isLoading)
+{
+    <MudProgressCircular Indeterminate="true"
+                         Color="Color.Primary" />
+}
+else if (report is null)
+{
+    <MudAlert Severity="Severity.Warning">
+        Prijava nije pronađena.
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="3">
+
+        <MudPaper Class="pa-5">
+
+            <MudText Typo="Typo.h4" Class="mb-3">
+                @report.Title
+            </MudText>
+
+            <MudChip T="string"
+                     Color="@GetStatusColor(report.FaultStatusName)"
+                     Class="mb-4">
+                @report.FaultStatusName
+            </MudChip>
+
+            <MudGrid>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Lokacija
+                    </MudText>
+
+                    <MudText>
+                        @report.LocationName
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Prijavitelj
+                    </MudText>
+
+                    <MudText>
+                        @report.ReporterName
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Vrsta kvara
+                    </MudText>
+
+                    <MudText>
+                        @(report.FaultTypeName ?? "-")
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Prioritet
+                    </MudText>
+
+                    <MudText>
+                        @(report.FaultPriorityName ?? "-")
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Datum prijave
+                    </MudText>
+
+                    <MudText>
+                        @report.CreatedAt.ToString("dd.MM.yyyy. HH:mm")
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2">
+                        Rok
+                    </MudText>
+
+                    <MudText>
+                        @(report.DueDate?.ToString("dd.MM.yyyy.") ?? "-")
+                    </MudText>
+                </MudItem>
+
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle2"
+                     Class="mb-2">
+                Opis problema
+            </MudText>
+
+            <MudText>
+                @report.Description
+            </MudText>
+
+        </MudPaper>
+
+        <MudPaper Class="pa-5">
+
+            <MudText Typo="Typo.h5"
+                     Class="mb-3">
+                Početne fotografije
+            </MudText>
+
+            @if (BeforePhotos.Count == 0)
+            {
+                <MudText>
+                    Za ovu prijavu nema početnih fotografija.
+                </MudText>
+            }
+            else
+            {
+                <MudGrid>
+
+                    @foreach (var media in BeforePhotos)
+                    {
+                        <MudItem xs="12"
+                                 sm="6"
+                                 md="4">
+
+                            <MudCard>
+
+                                <img src="@media.Url"
+                                     alt="@media.OriginalFileName"
+                                     style="width:100%;height:240px;object-fit:cover;display:block;" />
+
+                                <MudCardContent>
+
+                                    <MudText Typo="Typo.body2">
+                                        @media.OriginalFileName
+                                    </MudText>
+
+                                    <MudText Typo="Typo.caption">
+                                        @FormatBytes(media.FileSize)
+                                        ·
+                                        @media.UploadedAt.ToString("dd.MM.yyyy. HH:mm")
+                                    </MudText>
+
+                                </MudCardContent>
+
+                                @if (CanDeleteBeforePhoto)
+                                {
+                                    <MudCardActions>
+
+                                        <MudButton Color="Color.Error"
+                                                   OnClick="@(() => DeleteMedia(media.Id))">
+                                            Izbriši
+                                        </MudButton>
+
+                                    </MudCardActions>
+                                }
+
+                            </MudCard>
+
+                        </MudItem>
+                    }
+
+                </MudGrid>
+            }
+
+        </MudPaper>
+
+        <MudStack Row="true"
+                  Spacing="2">
+
+            @if (CanManage)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Href="@($"/faultreports/edit/{Id}")">
+                    Uredi prijavu
+                </MudButton>
+            }
+
+            <MudButton Variant="Variant.Outlined"
+                       Href="@BackUrl">
+                Natrag
+            </MudButton>
+
+        </MudStack>
+
+    </MudStack>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private FaultReportDto? report;
+    private List<FaultMediaDto> mediaItems = new();
+
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private bool CanManage =>
+        CurrentUser.HasAnyRole(
+            "Admin",
+            "Manager");
+
+    private bool CanDeleteBeforePhoto =>
+        CurrentUser.HasRole("Admin") ||
+        (CurrentUser.HasRole("Reporter") &&
+         report?.FaultStatusName == "Zaprimljeno");
+
+    private string BackUrl =>
+        CurrentUser.HasRole("Reporter") &&
+        !CanManage
+            ? "/myreports"
+            : "/faultreports";
+
+    private List<FaultMediaDto> BeforePhotos =>
+        mediaItems
+            .Where(media =>
+                media.Purpose == "BeforePhoto")
+            .ToList();
+
+    protected override async Task OnAfterRenderAsync(
+        bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await CurrentUser.InitializeAsync();
+
+        if (!CurrentUser.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await LoadProfile();
+
+        StateHasChanged();
+    }
+
+    private async Task LoadProfile()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            report =
+                await Http.GetFromJsonAsync<FaultReportDto>(
+                    $"api/faultreports/{Id}");
+
+            mediaItems =
+                await Http.GetFromJsonAsync<List<FaultMediaDto>>(
+                    $"api/faultreports/{Id}/media")
+                ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Prijavu nije moguće učitati: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task DeleteMedia(
+        int mediaId)
+    {
+        var confirmed =
+            await DialogService.ShowMessageBoxAsync(
+                "Brisanje fotografije",
+                "Želiš li sigurno izbrisati ovu fotografiju?",
+                yesText: "Izbriši",
+                cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        errorMessage = null;
+
+        try
+        {
+            var response =
+                await Http.DeleteAsync(
+                    $"api/faultreports/{Id}/media/{mediaId}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                errorMessage =
+                    string.IsNullOrWhiteSpace(message)
+                        ? "Fotografiju nije moguće izbrisati."
+                        : message.Trim('"');
+
+                return;
+            }
+
+            await LoadProfile();
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage =
+                $"Fotografiju nije moguće izbrisati: {ex.Message}";
+        }
+    }
+
+    private static Color GetStatusColor(
+        string status)
+    {
+        return status switch
+        {
+            "Zaprimljeno" => Color.Info,
+            "Pregledano" => Color.Primary,
+            "Dodijeljeno" => Color.Secondary,
+            "U radu" => Color.Warning,
+            "Riješeno" => Color.Success,
+            "Zatvoreno" => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private static string FormatBytes(
+        long bytes)
+    {
+        return bytes >= 1024 * 1024
+            ? $"{bytes / 1024d / 1024d:0.0} MB"
+            : $"{bytes / 1024d:0.0} KB";
+    }
+}

@@ -203,6 +203,7 @@
         <MudTh>Status</MudTh>
         <MudTh>Datum prijave</MudTh>
         <MudTh>Rok</MudTh>
+        <MudTh>Detalji</MudTh>
     </HeaderContent>
 
     <RowTemplate>
@@ -241,6 +242,16 @@
         <MudTd DataLabel="Rok">
             @(context.DueDate?.ToString("dd.MM.yyyy.") ?? "-")
         </MudTd>
+
+        <MudTd DataLabel="Detalji">
+
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                           Color="Color.Primary"
+                           Href="@($"/faultreports/{context.Id}")"
+                           Title="Detalji" />
+
+        </MudTd>
+
     </RowTemplate>
 
     <NoRecordsContent>
