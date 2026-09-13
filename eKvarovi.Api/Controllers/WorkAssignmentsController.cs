@@ -364,6 +364,22 @@ public class WorkAssignmentsController : ControllerBase
                             report.Id &&
                         item.IsActive);
 
+        if (activeAssignment is not null)
+        {
+            var hasActiveIntervention =
+                await _context.Interventions
+                    .AnyAsync(intervention =>
+                        intervention.WorkAssignmentId ==
+                            activeAssignment.Id &&
+                        intervention.FinishedAt == null);
+
+            if (hasActiveIntervention)
+            {
+                return BadRequest(
+                    "Prijavu nije moguće ponovno dodijeliti dok je intervencija u tijeku.");
+            }
+        }
+
         if (activeAssignment is not null &&
             activeAssignment.TechnicianId ==
                 technician.Id)
